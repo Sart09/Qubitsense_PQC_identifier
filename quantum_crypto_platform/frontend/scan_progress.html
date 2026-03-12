@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scan Progress — Quantum Crypto Intelligence</title>
+    <meta name="description" content="Live scan progress for quantum cryptographic analysis." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                },
+            },
+        };
+    </script>
+    <style>
+        body {
+            background: #0a0e1a;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 50% at 80% 100%, rgba(0, 240, 255, 0.06), transparent);
+            z-index: 0;
+            animation: bgShift 12s ease-in-out infinite alternate;
+        }
+
+        @keyframes bgShift {
+            0% {
+                opacity: .7;
+                transform: scale(1);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1.08);
+            }
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+            background-size: 48px 48px;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        @keyframes cardIn {
+            from {
+                opacity: 0;
+                transform: translateY(32px) scale(.97);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .card-animate {
+            animation: cardIn 0.7s cubic-bezier(.22, 1, .36, 1) both;
+        }
+
+        @keyframes progressPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .progress-active {
+            animation: progressPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes scanline {
+            0% {
+                top: 0;
+            }
+
+            100% {
+                top: 100%;
+            }
+        }
+
+        .scanline-effect::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.6), transparent);
+            animation: scanline 3s linear infinite;
+        }
+    </style>
+</head>
+
+<body class="dark font-sans text-slate-200 min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
+
+    <div class="relative z-10 w-full max-w-2xl px-4 card-animate">
+        <div class="bg-slate-900/75 backdrop-blur-xl border border-indigo-500/25 rounded-2xl p-10
+                shadow-[0_0_60px_rgba(99,102,241,0.08),0_24px_48px_rgba(0,0,0,0.4)]">
+
+            <!-- Header -->
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600
+                    grid place-items-center text-xl shadow-lg shadow-indigo-500/30">🛡️</div>
+                <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-300 to-indigo-400
+                   bg-clip-text text-transparent">Scan in Progress</h1>
+            </div>
+            <p id="domainLabel" class="text-sm text-slate-400 mb-8">Analyzing <strong class="text-slate-300"
+                    id="targetDomain">...</strong></p>
+
+            <!-- Status Badge -->
+            <div class="flex items-center gap-3 mb-8">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Status</span>
+                <span id="statusBadge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
+                     bg-blue-500/15 text-blue-400 border border-blue-500/30 progress-active">
+                    Queued
+                </span>
+            </div>
+
+            <!-- Progress Steps -->
+            <div class="space-y-4" id="stepsContainer">
+                <div class="step" data-step="discovery">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold flex items-center gap-2">
+                            <span class="step-icon text-base">🔍</span> Domain Discovery
+                        </span>
+                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-700"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="step" data-step="tls">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold flex items-center gap-2">
+                            <span class="step-icon text-base">🔒</span> TLS Analysis
+                        </span>
+                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-400 transition-all duration-700"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="step" data-step="quantum">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold flex items-center gap-2">
+                            <span class="step-icon text-base">⚛️</span> Quantum Risk Engine
+                        </span>
+                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-400 transition-all duration-700"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="step" data-step="hndl">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold flex items-center gap-2">
+                            <span class="step-icon text-base">🕵️</span> HNDL Detection
+                        </span>
+                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-amber-600 to-orange-400 transition-all duration-700"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="step" data-step="graph">
+                    <div class="flex justify-between items-center mb-1.5">
+                        <span class="text-sm font-semibold flex items-center gap-2">
+                            <span class="step-icon text-base">🌐</span> Graph Engine
+                        </span>
+                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-emerald-600 to-green-400 transition-all duration-700"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Message -->
+            <div id="completeMsg" class="hidden mt-8 text-center">
+                <p class="text-emerald-400 font-bold text-lg mb-2">✅ Scan Complete</p>
+                <p class="text-slate-400 text-sm">Redirecting to dashboard…</p>
+            </div>
+
+            <!-- Failed Message -->
+            <div id="failMsg" class="hidden mt-8 text-center">
+                <p class="text-red-400 font-bold text-lg mb-2">❌ Scan Failed</p>
+                <p class="text-slate-400 text-sm">An error occurred during scanning.</p>
+                <a href="/scanner"
+                    class="inline-block mt-4 px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500 transition">
+                    Try Again
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ── Extract scan_id from URL path: /scan-progress/{id} ── */
+        const pathParts = window.location.pathname.split('/');
+        const scanId = pathParts[pathParts.length - 1];
+
+        if (!scanId || isNaN(scanId)) {
+            document.getElementById('targetDomain').textContent = 'Invalid scan ID';
+        }
+
+        const badge = document.getElementById('statusBadge');
+        const steps = document.querySelectorAll('.step');
+        const completeMsg = document.getElementById('completeMsg');
+        const failMsg = document.getElementById('failMsg');
+
+        /* ── Stage simulation based on status ──────────────── */
+        const STAGES = ['discovery', 'tls', 'quantum', 'hndl', 'graph'];
+
+        let previousStatus = '';
+        let simulatedProgress = 0;
+        let pollCount = 0;
+
+        function updateSteps(status) {
+            pollCount++;
+
+            // Simulate progressive fill based on poll count & status
+            if (status === 'running') {
+                simulatedProgress = Math.min(95, pollCount * 12);
+            } else if (status === 'completed') {
+                simulatedProgress = 100;
+            }
+
+            STAGES.forEach((stage, idx) => {
+                const stepEl = document.querySelector(`.step[data-step="${stage}"]`);
+                const bar = stepEl.querySelector('.step-bar');
+                const pct = stepEl.querySelector('.step-pct');
+
+                // Calculate per-stage progress
+                const stageStart = (idx / STAGES.length) * 100;
+                const stageEnd = ((idx + 1) / STAGES.length) * 100;
+                let stageProgress = 0;
+
+                if (simulatedProgress >= stageEnd) {
+                    stageProgress = 100;
+                } else if (simulatedProgress > stageStart) {
+                    stageProgress = ((simulatedProgress - stageStart) / (stageEnd - stageStart)) * 100;
+                }
+
+                bar.style.width = stageProgress + '%';
+                pct.textContent = Math.round(stageProgress) + '%';
+
+                // Icon states
+                const icon = stepEl.querySelector('.step-icon');
+                if (stageProgress >= 100) {
+                    icon.textContent = '✅';
+                } else if (stageProgress > 0) {
+                    icon.textContent = '⏳';
+                }
+            });
+        }
+
+        /* ── Polling ───────────────────────────────────────── */
+        async function poll() {
+            try {
+                const res = await fetch(`/scan/${scanId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                document.getElementById('targetDomain').textContent = data.domain || scanId;
+
+                // Update badge
+                badge.textContent = data.status;
+                badge.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ';
+                if (data.status === 'queued') {
+                    badge.className += 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
+                } else if (data.status === 'running') {
+                    badge.className += 'bg-blue-500/15 text-blue-400 border border-blue-500/30 progress-active';
+                } else if (data.status === 'completed') {
+                    badge.className += 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+                } else if (data.status === 'failed') {
+                    badge.className += 'bg-red-500/15 text-red-400 border border-red-500/30';
+                }
+
+                updateSteps(data.status);
+
+                if (data.status === 'completed') {
+                    clearInterval(pollInterval);
+                    completeMsg.classList.remove('hidden');
+                    setTimeout(() => {
+                        window.location.href = `/dashboard/${scanId}`;
+                    }, 2000);
+                } else if (data.status === 'failed') {
+                    clearInterval(pollInterval);
+                    failMsg.classList.remove('hidden');
+                }
+            } catch { /* retry next interval */ }
+        }
+
+        const pollInterval = setInterval(poll, 2000);
+        poll(); // initial fetch
+    </script>
+</body>
+
+</html>

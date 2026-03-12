@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantum Crypto Intelligence Platform</title>
+  <meta name="description" content="Analyze websites for quantum cryptographic risk and HNDL exposure." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            cyber: {
+              bg: '#0a0e1a',
+              card: 'rgba(15, 23, 42, 0.75)',
+              border: 'rgba(99, 102, 241, 0.25)',
+              accent: '#818cf8',
+              bright: '#a5b4fc',
+              glow: 'rgba(129, 140, 248, 0.35)',
+              neon: '#00f0ff',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <!-- html5-qrcode -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- QuaggaJS -->
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+  <!-- Components -->
+  <script src="/components/qr_scanner.js"></script>
+  <script src="/components/barcode_scanner.js"></script>
+  <style>
+    body {
+      background: #0a0e1a;
+    }
+
+    /* Animated gradient bg */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(99, 102, 241, 0.15), transparent),
+        radial-gradient(ellipse 60% 50% at 80% 100%, rgba(0, 240, 255, 0.06), transparent),
+        radial-gradient(ellipse 50% 40% at 10% 60%, rgba(244, 114, 182, 0.06), transparent);
+      z-index: 0;
+      animation: bgShift 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes bgShift {
+      0% {
+        opacity: .7;
+        transform: scale(1);
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1.08);
+      }
+    }
+
+    /* Grid overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(99, 102, 241, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99, 102, 241, 0.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .glow-border {
+      box-shadow: 0 0 60px rgba(99, 102, 241, 0.08), 0 24px 48px rgba(0, 0, 0, 0.4);
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: translateY(32px) scale(.97);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .card-animate {
+      animation: cardIn 0.7s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    @keyframes spin06 {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .spinner-sm {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin06 .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    /* Scanner modals */
+    .scanner-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.85);
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+    }
+
+    .scanner-modal.active {
+      display: flex;
+    }
+
+    .scanner-box {
+      background: #0f172a;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 16px;
+      padding: 24px;
+      width: min(480px, 92vw);
+      max-height: 80vh;
+      overflow: hidden;
+    }
+
+    #qr-reader,
+    #barcode-reader {
+      width: 100%;
+      min-height: 300px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    #qr-reader video,
+    #barcode-reader video {
+      border-radius: 8px;
+    }
+
+    /* Pulse ring on buttons */
+    .pulse-ring {
+      position: relative;
+    }
+
+    .pulse-ring::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: inherit;
+      border: 2px solid rgba(129, 140, 248, 0.4);
+      animation: pulsate 2s ease-out infinite;
+    }
+
+    @keyframes pulsate {
+      0% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.15);
+      }
+    }
+  </style>
+</head>
+
+<body class="dark font-sans text-slate-200 min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
+
+  <!-- Navigation -->
+  <nav class="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50">
+    <div class="text-indigo-400 font-bold tracking-widest text-sm uppercase" id="navEmailDisplay"></div>
+    <div class="flex gap-4">
+      <a href="/login" id="navAuthBtn" class="text-sm font-semibold text-slate-300 hover:text-white transition">Login /
+        Register</a>
+      <a href="/user-dashboard" id="navDashboardBtn"
+        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My
+        Dashboard</a>
+    </div>
+  </nav>
+
+  <!-- ---- Main Card ---- -->
+  <div class="relative z-10 w-full max-w-xl px-4 card-animate mt-16">
+    <div class="bg-slate-900/75 backdrop-blur-xl border border-indigo-500/25 rounded-2xl p-10 glow-border">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-3 mb-2">
+        <div
+          class="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 grid place-items-center text-xl shadow-lg shadow-indigo-500/30">
+          🛡️
+        </div>
+        <h1
+          class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-300 to-indigo-400 bg-clip-text text-transparent">
+          Quantum Crypto Intelligence
+        </h1>
+      </div>
+      <p class="text-sm text-slate-400 mb-8 leading-relaxed">
+        Analyze any domain for quantum cryptographic risk and
+        <strong class="text-slate-300">Harvest&nbsp;Now,&nbsp;Decrypt&nbsp;Later</strong> exposure.
+      </p>
+
+      <!-- Method 1: Manual Domain Input -->
+      <form id="scanForm" autocomplete="off">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2" for="targetInput">Target
+          Domain or URL</label>
+        <div class="flex gap-3 mb-6">
+          <input id="targetInput" type="text" placeholder="e.g. login.bank.com or https://example.com" class="flex-1 px-4 py-3 rounded-xl bg-slate-800/60 border border-indigo-500/20
+                        text-slate-200 placeholder-slate-500 outline-none
+                        focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition" />
+          <button id="scanBtn" type="submit" class="px-6 py-3 rounded-xl font-semibold text-white
+                         bg-gradient-to-r from-indigo-600 to-indigo-500
+                         shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5
+                         hover:shadow-indigo-500/50 active:translate-y-0 transition
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+            Start Scan
+          </button>
+        </div>
+      </form>
+
+      <!-- Divider -->
+      <div class="flex items-center gap-4 mb-6">
+        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
+        <span class="text-xs font-bold uppercase tracking-widest text-slate-500">or</span>
+        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
+      </div>
+
+      <!-- Method 2 & 3: QR / Barcode -->
+      <div class="grid grid-cols-2 gap-4">
+        <button id="qrBtn" class="flex flex-col items-center gap-2 py-5 rounded-xl
+                       bg-slate-800/50 border border-indigo-500/20
+                       hover:border-indigo-400/50 hover:bg-slate-800/80
+                       transition group cursor-pointer">
+          <span class="text-3xl group-hover:scale-110 transition-transform">📱</span>
+          <span class="text-sm font-semibold text-slate-300">Scan QR Code</span>
+          <span class="text-[10px] text-slate-500">Open camera</span>
+        </button>
+
+        <button id="barcodeBtn" class="flex flex-col items-center gap-2 py-5 rounded-xl
+                       bg-slate-800/50 border border-indigo-500/20
+                       hover:border-indigo-400/50 hover:bg-slate-800/80
+                       transition group cursor-pointer">
+          <span class="text-3xl group-hover:scale-110 transition-transform">🔖</span>
+          <span class="text-sm font-semibold text-slate-300">Scan Barcode</span>
+          <span class="text-[10px] text-slate-500">Open camera</span>
+        </button>
+      </div>
+
+      <!-- Result / Error -->
+      <div id="result" class="mt-6 hidden rounded-xl p-4 text-sm leading-relaxed"></div>
+    </div>
+  </div>
+
+  <p class="relative z-10 mt-6 text-[11px] text-slate-500/50">Quantum Crypto Intelligence Platform v0.2</p>
+
+  <!-- ---- QR Scanner Modal ---- -->
+  <div id="qrModal" class="scanner-modal">
+    <div class="scanner-box">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-base font-bold text-indigo-300">📱 QR Code Scanner</h2>
+        <button id="qrClose" class="text-slate-400 hover:text-white text-xl transition">&times;</button>
+      </div>
+      <div id="qr-reader"></div>
+      <p class="text-xs text-slate-500 mt-3 text-center">Point camera at a QR code containing a URL</p>
+    </div>
+  </div>
+
+  <!-- ---- Barcode Scanner Modal ---- -->
+  <div id="barcodeModal" class="scanner-modal">
+    <div class="scanner-box">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-base font-bold text-indigo-300">🔖 Barcode Scanner</h2>
+        <button id="barcodeClose" class="text-slate-400 hover:text-white text-xl transition">&times;</button>
+      </div>
+      <div id="barcode-reader"></div>
+      <p class="text-xs text-slate-500 mt-3 text-center">Point camera at a barcode containing a domain</p>
+    </div>
+  </div>
+
+  <script>
+    /* ── Elements ──────────────────────────────────────── */
+    const form = document.getElementById('scanForm');
+    const input = document.getElementById('targetInput');
+    const btn = document.getElementById('scanBtn');
+    const resultEl = document.getElementById('result');
+
+    const qrBtn = document.getElementById('qrBtn');
+    const barcodeBtn = document.getElementById('barcodeBtn');
+    const qrModal = document.getElementById('qrModal');
+    const barcodeModal = document.getElementById('barcodeModal');
+
+    let qrScanner = null;
+    let barcodeScanner = null;
+
+    /* ── Submit a domain to the API ───────────────────── */
+    async function submitScan(target) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-sm"></span>Submitting…';
+      resultEl.className = 'mt-6 hidden';
+
+      try {
+        const token = localStorage.getItem('token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/scan', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ target }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Request failed');
+        }
+
+        const data = await res.json();
+
+        if (data.status === 'cached') {
+          // Show cached message and redirect to dashboard
+          resultEl.textContent = '✅ Using cached scan result from previous analysis.';
+          resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400';
+          setTimeout(() => {
+            window.location.href = `/dashboard/${data.scan_id}`;
+          }, 1500);
+        } else {
+          // New scan — redirect to progress page
+          window.location.href = `/scan-progress/${data.scan_id}`;
+        }
+      } catch (err) {
+        resultEl.textContent = `Error: ${err.message}`;
+        resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-red-500/10 border border-red-500/30 text-red-400';
+        btn.disabled = false;
+        btn.textContent = 'Start Scan';
+      }
+    }
+
+    /* ── Form submit ──────────────────────────────────── */
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const target = input.value.trim();
+      if (target) submitScan(target);
+    });
+
+    /* ── QR Scanner ───────────────────────────────────── */
+    qrBtn.addEventListener('click', async () => {
+      qrModal.classList.add('active');
+      qrScanner = new QRScanner('qr-reader', (domain) => {
+        qrModal.classList.remove('active');
+        input.value = domain;
+        submitScan(domain);
+      });
+      try {
+        await qrScanner.start();
+      } catch (err) {
+        alert('Camera access denied or not available: ' + err.message);
+        qrModal.classList.remove('active');
+      }
+    });
+
+    document.getElementById('qrClose').addEventListener('click', () => {
+      if (qrScanner) qrScanner.stop();
+      qrModal.classList.remove('active');
+    });
+
+    /* ── Barcode Scanner ──────────────────────────────── */
+    barcodeBtn.addEventListener('click', async () => {
+      barcodeModal.classList.add('active');
+      barcodeScanner = new BarcodeScanner('barcode-reader', (domain) => {
+        barcodeModal.classList.remove('active');
+        input.value = domain;
+        submitScan(domain);
+      });
+      try {
+        await barcodeScanner.start();
+      } catch (err) {
+        alert('Camera access denied or not available: ' + err.message);
+        barcodeModal.classList.remove('active');
+      }
+    });
+
+    document.getElementById('barcodeClose').addEventListener('click', () => {
+      if (barcodeScanner) barcodeScanner.stop();
+      barcodeModal.classList.remove('active');
+    });
+
+    /* ── Auth UI State ────────────────────────────────── */
+    window.addEventListener('DOMContentLoaded', () => {
+      const email = localStorage.getItem('email');
+      const token = localStorage.getItem('token');
+      const navAuthBtn = document.getElementById('navAuthBtn');
+      const navDashboardBtn = document.getElementById('navDashboardBtn');
+      const navEmailDisplay = document.getElementById('navEmailDisplay');
+
+      if (token) {
+        navEmailDisplay.textContent = email || 'Authenticated';
+        navAuthBtn.textContent = 'Logout';
+        navAuthBtn.href = '#';
+        navAuthBtn.classList.replace('text-slate-300', 'text-red-400');
+        navAuthBtn.classList.replace('hover:text-white', 'hover:text-red-300');
+        navDashboardBtn.classList.remove('hidden');
+
+        navAuthBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          localStorage.removeItem('token');
+          localStorage.removeItem('email');
+          localStorage.removeItem('user_id');
+          location.reload();
+        });
+      }
+    });
+  </script>
+</body>
+
+</html>

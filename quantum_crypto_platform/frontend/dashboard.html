@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard — Quantum Crypto Intelligence</title>
+    <meta name="description"
+        content="Quantum cryptographic risk dashboard with HNDL detection and attack surface visualization." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                },
+            },
+        };
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- Cytoscape.js -->
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+    <!-- Components -->
+    <script src="/components/risk_chart.js"></script>
+    <script src="/components/graph_viewer.js"></script>
+    <style>
+        body {
+            background: #0a0e1a;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(99, 102, 241, 0.1), transparent),
+                radial-gradient(ellipse 60% 50% at 80% 100%, rgba(0, 240, 255, 0.04), transparent);
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease both;
+        }
+
+        .fade-in-d1 {
+            animation-delay: 0.1s;
+        }
+
+        .fade-in-d2 {
+            animation-delay: 0.2s;
+        }
+
+        .fade-in-d3 {
+            animation-delay: 0.3s;
+        }
+
+        .fade-in-d4 {
+            animation-delay: 0.4s;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+        }
+
+        #graphContainer {
+            min-height: 800px;
+        }
+    </style>
+</head>
+
+<body class="dark font-sans text-slate-200 min-h-screen overflow-x-hidden">
+
+    <!-- ──────── Top Navigation ──────── -->
+    <nav class="relative z-10 border-b border-indigo-500/15 bg-slate-900/60 backdrop-blur-lg">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="/" id="homeLink" class="flex items-center gap-3 no-underline">
+                <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600
+                    grid place-items-center text-base shadow-lg shadow-indigo-500/30">🛡️</div>
+                <span class="text-base font-extrabold tracking-tight bg-gradient-to-r from-indigo-300 to-indigo-400
+                     bg-clip-text text-transparent">Quantum Crypto Intelligence</span>
+            </a>
+            <div class="flex gap-3">
+                <button id="exportJsonBtn" class="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-800 border border-indigo-500/20
+                       hover:border-indigo-400/50 hover:bg-slate-700 transition text-slate-300">
+                    ⬇ Download JSON
+                </button>
+                <button id="exportPdfBtn" class="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-800 border border-indigo-500/20
+                       hover:border-indigo-400/50 hover:bg-slate-700 transition text-slate-300">
+                    📄 Download PDF
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ──────── Header Stats ──────── -->
+    <header class="relative z-10 max-w-7xl mx-auto px-6 pt-8 pb-4 fade-in">
+        <h1 class="text-2xl font-extrabold mb-1">
+            Scan Results: <span id="headerDomain" class="text-indigo-400">…</span>
+        </h1>
+        <p class="text-sm text-slate-500 mb-6">Scan ID: <span id="headerScanId">…</span></p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <!-- Stat card 1 -->
+            <div class="panel p-5">
+                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Total Assets</p>
+                <p id="statAssets" class="text-3xl font-extrabold text-indigo-400">-</p>
+            </div>
+            <!-- Stat card 2 -->
+            <div class="panel p-5">
+                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Avg Quantum Risk</p>
+                <p id="statAvgRisk" class="text-3xl font-extrabold text-amber-400">-</p>
+            </div>
+            <!-- Stat card 3 -->
+            <div class="panel p-5">
+                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Critical HNDL</p>
+                <p id="statHndlCritical" class="text-3xl font-extrabold text-red-400">-</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- ──────── Main Content Grid ──────── -->
+    <main class="relative z-10 max-w-7xl mx-auto px-6 pb-12 space-y-6">
+
+        <!-- Row 1: Risk Chart + HNDL Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Quantum Risk Chart -->
+            <section class="panel p-6 fade-in fade-in-d1">
+                <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+                    <span class="text-lg">⚛️</span> Quantum Risk Overview
+                </h2>
+                <div class="relative" style="height: 300px;">
+                    <canvas id="riskChart"></canvas>
+                </div>
+            </section>
+
+            <!-- HNDL Threat Panel -->
+            <section class="panel p-6 fade-in fade-in-d2">
+                <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+                    <span class="text-lg">🕵️</span> HNDL Threat Panel
+                </h2>
+                <div class="overflow-auto max-h-[320px]">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
+                                <th class="text-left py-2 pr-4">Hostname</th>
+                                <th class="text-left py-2 pr-4">Service</th>
+                                <th class="text-center py-2 pr-4">Multiplier</th>
+                                <th class="text-center py-2">Risk</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hndlTableBody">
+                            <tr>
+                                <td colspan="4" class="text-center py-8 text-slate-600">Loading…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Row 2: Asset Risk Table -->
+        <section class="panel p-6 fade-in fade-in-d3">
+            <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+                <span class="text-lg">📋</span> Asset Risk Table
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
+                            <th class="text-left py-2 pr-4">Hostname</th>
+                            <th class="text-left py-2 pr-4">TLS Version</th>
+                            <th class="text-left py-2 pr-4">Cipher Suite</th>
+                            <th class="text-center py-2 pr-4">Quantum Risk</th>
+                            <th class="text-center py-2 pr-4">Risk Label</th>
+                            <th class="text-center py-2">HNDL Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assetTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center py-8 text-slate-600">Loading…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Row 3: Attack Surface Graph -->
+        <section class="panel p-6 fade-in fade-in-d4">
+            <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+                <span class="text-lg">🌐</span> Attack Surface Graph
+            </h2>
+            <div id="graphContainer" class="rounded-xl bg-slate-950/50 border border-slate-800"></div>
+        </section>
+    </main>
+
+    <!-- PQC Asset Drill-Down Modal -->
+    <div id="assetModal"
+        class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 transition-opacity">
+        <div
+            class="bg-slate-900 border border-indigo-500/30 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(99,102,241,0.1)] fade-in">
+            <!-- Header -->
+            <div
+                class="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-800/20 sticky top-0 z-10 backdrop-blur-md">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span class="text-indigo-400">🛡️ Asset Details:</span>
+                        <span id="modalTitleHost" class="font-mono">...</span>
+                    </h2>
+                    <p class="text-sm text-slate-400 mt-1">Overall Quantum Risk Score: <strong id="modalTitleScore"
+                            class="text-amber-400">0</strong>/100</p>
+                </div>
+                <button onclick="closeAssetModal()"
+                    class="text-slate-400 hover:text-white transition text-3xl font-light">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6 space-y-8" id="modalBody">
+                <div id="modalLoading" class="text-center py-12">
+                    <div
+                        class="inline-block w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4">
+                    </div>
+                    <p class="text-slate-500 text-sm">Fetching algorithmic intelligence...</p>
+                </div>
+
+                <div id="modalContent" class="hidden grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Left Column -->
+                    <div class="space-y-6">
+                        <!-- 1. Score Breakdown -->
+                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
+                            <h3
+                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                                Score Breakdown</h3>
+                            <div class="space-y-4" id="scoreBars">
+                                <!-- populated by JS -->
+                            </div>
+                        </section>
+
+                        <!-- 3. Quantum Threat Explanation -->
+                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
+                            <h3
+                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                                Quantum Threat Explanation</h3>
+                            <p class="text-sm text-slate-400 leading-relaxed">
+                                This asset depends on classical cryptographic primitives that are mathematically
+                                vulnerable to attacks from cryptographically relevant quantum computers (CRQC).
+                                Specifically, primitives relying on integer factorization (e.g., RSA) or discrete
+                                logarithms (e.g., ECC, Diffie-Hellman) can be broken exponentially faster using Shor's
+                                algorithm.
+                                <br><br>
+                                Adversaries can perform a <strong>"Harvest Now, Decrypt Later" (HNDL)</strong> attack by
+                                capturing these encrypted communications today, retaining them in storage, and
+                                subsequently decrypting the traffic once quantum computing technology matures.
+                            </p>
+                        </section>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="space-y-6">
+                        <!-- 2. Cryptographic Configuration -->
+                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
+                            <h3
+                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                                Cryptographic Configuration</h3>
+                            <div class="space-y-3 text-sm">
+                                <div
+                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
+                                    <span class="text-slate-500 font-medium">TLS Version</span>
+                                    <span id="modalTlsVer" class="font-mono text-indigo-300"></span>
+                                </div>
+                                <div
+                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
+                                    <span class="text-slate-500 font-medium">Cipher Suite</span>
+                                    <span id="modalCipher" class="font-mono text-indigo-300 truncate max-w-[250px]"
+                                        title=""></span>
+                                </div>
+                                <div
+                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
+                                    <span class="text-slate-500 font-medium">Key Exchange</span>
+                                    <span id="modalKeyEx" class="font-mono text-indigo-300 truncate max-w-[250px]"
+                                        title=""></span>
+                                </div>
+                                <div
+                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
+                                    <span class="text-slate-500 font-medium">Signature Algorithm</span>
+                                    <span id="modalSigAlg" class="font-mono text-indigo-300"></span>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:justify-between">
+                                    <span class="text-slate-500 font-medium">Key Size</span>
+                                    <span id="modalKeySize" class="font-mono text-indigo-300"></span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 4. PQC Migration Recommendations -->
+                        <section class="bg-emerald-900/10 p-5 rounded-xl border border-emerald-500/20">
+                            <h3
+                                class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-4 border-b border-emerald-500/20 pb-2 flex items-center gap-2">
+                                <span>🚀</span> Recommended PQC Migration
+                            </h3>
+                            <p class="text-xs text-slate-400 mb-3">Transition to NIST-approved Post-Quantum Cryptography
+                                algorithms:</p>
+                            <ul class="text-sm text-emerald-200/80 space-y-2 list-none" id="modalPqc">
+                                <!-- populated by JS -->
+                            </ul>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="relative z-10 text-center py-6 text-[11px] text-slate-500/50">
+        Quantum Crypto Intelligence Platform v0.2
+    </footer>
+
+    <script>
+        /* ── Extract scan_id from URL path ────────────────── */
+        const pathParts = window.location.pathname.split('/');
+        const scanId = pathParts[pathParts.length - 1];
+        document.getElementById('headerScanId').textContent = scanId;
+
+        /* ── Risk badge helper ─────────────────────────────── */
+        function riskBadge(label, extra = '') {
+            const colors = {
+                'critical': 'bg-red-500/15 text-red-400 border-red-500/30',
+                'high': 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+                'medium': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                'low': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                'quantum vulnerable': 'bg-red-500/15 text-red-400 border-red-500/30',
+                'transitioning': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+                'quantum safe': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+            };
+            const cls = colors[(label || '').toLowerCase()] || 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+            return `<span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border ${cls}">${label}${extra}</span>`;
+        }
+
+        /* ── Data holders ──────────────────────────────────── */
+        let tlsData = [], qrData = [], hndlData = [], domain = '';
+
+        /* ── Fetch all data in parallel ────────────────────── */
+        async function loadDashboard() {
+            try {
+                const [statusRes, tlsRes, qrRes, hndlRes] = await Promise.all([
+                    fetch(`/scan/${scanId}`),
+                    fetch(`/scan/${scanId}/tls`),
+                    fetch(`/scan/${scanId}/quantum-risk`),
+                    fetch(`/scan/${scanId}/hndl`),
+                ]);
+
+                const statusData = await statusRes.json();
+                const tlsJson = await tlsRes.json();
+                const qrJson = await qrRes.json();
+                const hndlJson = await hndlRes.json();
+
+                domain = statusData.domain || '';
+                tlsData = tlsJson.results || [];
+                qrData = qrJson.results || [];
+                hndlData = hndlJson.targets || [];
+
+                // ── Header
+                document.getElementById('headerDomain').textContent = domain;
+                document.getElementById('statAssets').textContent = tlsData.length;
+
+                // Avg quantum risk
+                if (qrData.length > 0) {
+                    const avg = Math.round(qrData.reduce((s, r) => s + r.risk_score, 0) / qrData.length);
+                    document.getElementById('statAvgRisk').textContent = avg + '/100';
+                } else {
+                    document.getElementById('statAvgRisk').textContent = 'N/A';
+                }
+
+                // Critical HNDL count
+                const critCount = hndlData.filter(h => h.risk === 'critical').length;
+                document.getElementById('statHndlCritical').textContent = critCount;
+
+                // ── Render sections
+                renderAssetTable();
+                renderHndlPanel();
+                renderRiskChart();
+                renderGraph();
+            } catch (err) {
+                console.error('Dashboard load error:', err);
+            }
+        }
+
+        /* ── Asset Risk Table ──────────────────────────────── */
+        function renderAssetTable() {
+            const tbody = document.getElementById('assetTableBody');
+            if (tlsData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-600">No assets found</td></tr>';
+                return;
+            }
+
+            // Build lookup maps
+            const qrMap = {};
+            qrData.forEach(r => qrMap[r.hostname] = r);
+            const hndlMap = {};
+            hndlData.forEach(t => hndlMap[t.hostname] = t);
+
+            tbody.innerHTML = tlsData.map(tls => {
+                const qr = qrMap[tls.hostname];
+                const hndl = hndlMap[tls.hostname];
+                const riskScore = qr ? qr.risk_score : '-';
+                const riskLabel = qr ? qr.risk_label : 'Unknown';
+                const hndlLevel = hndl ? hndl.risk : 'N/A';
+
+                return `
+          <tr class="border-b border-slate-800/50 hover:bg-slate-800/80 transition cursor-pointer" onclick="openAssetModal(${tls.id})">
+            <td class="py-3 pr-4 font-mono text-xs text-indigo-300">${tls.hostname}</td>
+            <td class="py-3 pr-4">${tls.tls_version || '—'}</td>
+            <td class="py-3 pr-4 text-xs text-slate-400 max-w-[200px] truncate">${tls.cipher_suite || '—'}</td>
+            <td class="py-3 pr-4 text-center font-bold">${riskScore}</td>
+            <td class="py-3 pr-4 text-center">${riskBadge(riskLabel)}</td>
+            <td class="py-3 text-center">${riskBadge(hndlLevel)}</td>
+          </tr>`;
+            }).join('');
+        }
+
+        /* ── HNDL Panel ────────────────────────────────────── */
+        function renderHndlPanel() {
+            const tbody = document.getElementById('hndlTableBody');
+            if (hndlData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-600">No HNDL data</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = hndlData.map(h => {
+                const isVpn = ['OpenVPN', 'IPSec', 'SSL-VPN', 'WireGuard'].includes(h.service);
+                const vpnTag = isVpn ? ' <span class="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">VPN</span>' : '';
+
+                return `
+          <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
+            <td class="py-3 pr-4 font-mono text-xs text-indigo-300">${h.hostname}</td>
+            <td class="py-3 pr-4 text-xs">${h.service}${vpnTag}</td>
+            <td class="py-3 pr-4 text-center font-bold text-amber-400">${h.multiplier.toFixed(1)}x</td>
+            <td class="py-3 text-center">${riskBadge(h.risk)}</td>
+          </tr>`;
+            }).join('');
+        }
+
+        /* ── Risk Chart ─────────────────────────────────────── */
+        function renderRiskChart() {
+            if (qrData.length > 0) {
+                RiskChart.render('riskChart', qrData);
+            }
+        }
+
+        /* ── Attack Surface Graph ──────────────────────────── */
+        function renderGraph() {
+            if (tlsData.length > 0) {
+                GraphViewer.render('graphContainer', domain, tlsData, qrData, hndlData);
+            }
+        }
+
+        /* ── Export JSON ────────────────────────────────────── */
+        document.getElementById('exportJsonBtn').addEventListener('click', async () => {
+            try {
+                const res = await fetch(`/scan/${scanId}/report`);
+                const data = await res.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `quantum-scan-${scanId}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('Export failed: ' + err.message);
+            }
+        });
+
+        /* ── Export PDF (print-based) ───────────────────────── */
+        document.getElementById('exportPdfBtn').addEventListener('click', () => {
+            window.print();
+        });
+
+        /* ── Dynamic Home Link ─────────────────────────────── */
+        const token = localStorage.getItem('token');
+        const homeLink = document.getElementById('homeLink');
+        if (token) {
+            homeLink.href = "/user-dashboard";
+        }
+
+        /* ── Asset Modal Logic ─────────────────────────────── */
+        function openAssetModal(assetId) {
+            document.getElementById('assetModal').classList.remove('hidden');
+            document.getElementById('modalLoading').classList.remove('hidden');
+            document.getElementById('modalContent').classList.add('hidden');
+
+            fetch(`/asset/${assetId}`)
+                .then(res => {
+                    if (!res.ok) throw new Error("Failed to fetch asset details");
+                    return res.json();
+                })
+                .then(data => {
+                    document.getElementById('modalLoading').classList.add('hidden');
+                    document.getElementById('modalContent').classList.remove('hidden');
+
+                    document.getElementById('modalTitleHost').textContent = data.host + ':' + data.port;
+                    document.getElementById('modalTitleScore').textContent = data.score;
+
+                    // Config
+                    document.getElementById('modalTlsVer').textContent = data.tls_version || 'N/A';
+
+                    document.getElementById('modalCipher').textContent = data.cipher_suite || 'N/A';
+                    document.getElementById('modalCipher').title = data.cipher_suite || '';
+
+                    document.getElementById('modalKeyEx').textContent = data.key_exchange_algorithm || 'N/A';
+                    document.getElementById('modalKeyEx').title = data.key_exchange_algorithm || '';
+
+                    document.getElementById('modalSigAlg').textContent = data.signature_algorithm || 'N/A';
+                    document.getElementById('modalKeySize').textContent = data.key_size ? `${data.key_size} bits` : 'N/A';
+
+                    // Recommendations
+                    document.getElementById('modalPqc').innerHTML = data.pqc_recommendations
+                        .map(r => `<li class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>${r}</li>`).join('');
+
+                    // Score Breakdown bars
+                    const b = data.score_breakdown;
+                    const renderBar = (label, val, max) => {
+                        const pct = Math.min(100, Math.max(0, (val / max) * 100));
+                        const color = pct > 50 ? 'bg-red-500' : (pct > 0 ? 'bg-amber-500' : 'bg-emerald-500');
+                        return `
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-slate-400">${label} Penalty</span>
+                                <span class="font-bold font-mono text-slate-300">+${val} pts</span>
+                            </div>
+                            <div class="w-full bg-slate-900 rounded-full h-1.5 border border-slate-700/50 shadow-inner">
+                                <div class="${color} h-1.5 rounded-full shadow-[0_0_8px_currentColor]" style="width: ${pct}%"></div>
+                            </div>
+                        </div>`;
+                    };
+
+                    document.getElementById('scoreBars').innerHTML =
+                        renderBar('Key Exchange', b.key_exchange, 32) +
+                        renderBar('Signature Alg', b.signature, 20) +
+                        renderBar('TLS Protocol', b.tls, 15) +
+                        renderBar('Key Size Rule', b.key_size, 9) +
+                        renderBar('Certificate', b.certificate, 3) +
+                        renderBar('Cipher Strength', b.cipher, 1);
+                })
+                .catch(err => {
+                    document.getElementById('modalLoading').innerHTML = `<p class="text-red-400 font-bold">Error loading asset details.</p><p class="text-sm text-slate-500">${err.message}</p>`;
+                    console.error(err);
+                });
+        }
+
+        function closeAssetModal() {
+            document.getElementById('assetModal').classList.add('hidden');
+        }
+
+        // Close on esc or click outside
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeAssetModal();
+        });
+        document.getElementById('assetModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('assetModal')) closeAssetModal();
+        });
+
+        /* ── Init ──────────────────────────────────────────── */
+        loadDashboard();
+    </script>
+</body>
+
+</html>
