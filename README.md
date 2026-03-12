@@ -7,26 +7,19 @@
 
 ---
 
-## 🚀 Main Functions
+## 🚀 Key Features
 
-The primary objective of Qubitsense is to provide a unified visibility layer into an organization's cryptographic health:
+Qubitsense provides a unified visibility layer into an organization's cryptographic health with the following capabilities:
 
-1.  **Crypto Inventory Discovery**: Automatically discovers and catalogs public-facing assets (Web Servers, APIs, VPNs) and their associated TLS certificates.
-2.  **Cryptographic Control Validation**: Validates the cipher suites, key exchange algorithms, and signature algorithms in use.
-3.  **PQC Readiness Assessment**: Cross-references identified algorithms against NIST-standardized Post-Quantum Cryptography (PQC) standards.
-4.  **Quantum-Safe Labeling**: Automatically issues "Post Quantum Cryptography (PQC) Ready" or "Fully Quantum Safe" digital labels for systems meeting modern standards.
-
----
-
-## ✨ Additional Features (Beyond Hackathon Requirements)
-
-While the hackathon required baseline discovery and assessment, Qubitsense expands on these with enterprise-grade features:
-
-*   **Dynamic Normalized Risk Scoring**: Implements a weighted 0-100 scoring model that evaluates TLS versions, key exchange protocols, and signature algorithms. Risk is recalculated in real-time as threat intelligence updates.
-*   **HNDL Exposure Analysis**: Specifically identifies assets vulnerable to "Harvest Now, Decrypt Later" attacks by identifying long-life certificate signatures and classical asymmetric encryption.
+*   **Crypto Inventory Discovery**: Automatically discovers and catalogs public-facing assets (Web Servers, APIs, VPNs) and their associated TLS certificates.
+*   **Cryptographic Control Validation**: Validates the cipher suites, key exchange algorithms, and signature algorithms in use.
+*   **PQC Readiness Assessment**: Cross-references identified algorithms against NIST-standardized Post-Quantum Cryptography (PQC) standards.
+*   **Quantum-Safe Labeling**: Automatically issues "Post Quantum Cryptography (PQC) Ready" labels for systems meeting modern standards.
+*   **Dynamic Normalized Risk Scoring**: Implements a weighted 0-100 scoring model evaluating TLS versions, key exchange protocols, and signatures in real-time.
+*   **HNDL Exposure Analysis**: Specifically identifies assets vulnerable to "Harvest Now, Decrypt Later" attacks by detecting long-life certificates and classical asymmetric encryption.
 *   **Multi-Domain Dashboard**: A centralized user interface to track security posture across dozens of domains simultaneously.
-*   **User Authentication & Secure History**: Integrated JWT-based authentication to store and manage scan histories securely for different organizations.
-*   **Domain Monitoring**: Proactive monitoring toggle to alert users when a previously "Safe" domain degrades due to updated security standards.
+*   **User Authentication & Secure History**: Integrated JWT-based authentication to store and manage scan histories securely.
+*   **Domain Monitoring**: Proactive monitoring toggle to alert users when a domain's security status changes.
 *   **Automated Intelligence Feed**: A self-updating registry of classical vs. quantum-safe algorithms.
 
 ---
