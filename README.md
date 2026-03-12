@@ -75,16 +75,27 @@ pip install fastapi uvicorn cryptography PyJWT bcrypt requests python-multipart
 ### 3. Initialize the Database
 The system automatically initializes its SQLite database (`platform.db`) on the first run.
 
-### 4. Start the Server
-Run the FastAPI application using Uvicorn:
+### 4. Start the Application
+
+The system requires two components to be running simultaneously:
+
+#### A. Start the API Server
+Run the FastAPI application from the project root:
 ```bash
 python quantum_crypto_platform/backend/server.py
 ```
-Wait for the console message: `[startup] Seeded algorithms into crypto_registry`.
+Wait for the message: `[startup] Seeded algorithms into crypto_registry`.
+
+#### B. Start the Scan Worker
+In a **new terminal tab**, start the background worker:
+```bash
+python quantum_crypto_platform/workers/scan_worker.py
+```
+The worker will wait for jobs and process them as they are queued via the web interface.
 
 ### 5. Access the Platform
 *   **Frontend**: Open `http://localhost:8000` in your browser.
-*   **API Docs**: Open `http://localhost:8000/docs` for the interactive Swagger documentation.
+*   **API Docs**: Open `http://localhost:8000/docs` for interactive Swagger documentation.
 
 ---
 
