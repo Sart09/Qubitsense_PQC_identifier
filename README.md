@@ -92,13 +92,16 @@ Built with **FastAPI** (Python) on the backend and a modern HTML/JS frontend.
 git clone https://github.com/Sart09/Qubitsense_PQC_identifier.git
 cd Qubitsense_PQC_identifier
 
-# Install dependencies
-pip install fastapi uvicorn pyjwt bcrypt cryptography
+# Install dependencies 
+# Core: fastapi, uvicorn, pyjwt, bcrypt, cryptography, python-dotenv, python-multipart
+# Scanning: aiodns, pycares, dnspython
+# Document Analysis: Pillow, pyzbar, pymupdf
+pip install fastapi uvicorn pyjwt bcrypt cryptography python-dotenv python-multipart aiodns pycares dnspython Pillow pyzbar pymupdf
 
 # Configure the environment
 cp .env.example .env
-# Edit .env and supply your Anthropic API Key for the Floating Web Assistant 
-# CLAUDE_API_KEY=sk-ant-api03...
+# Edit .env and supply your Gemini API Key for the AI Agent (Qubit)
+# GEMINI_API_KEY=AIzaSy...
 ```
 
 ### Running
