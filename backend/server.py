@@ -14,13 +14,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Header, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Header, UploadFile, File, Depends, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 from datetime import datetime, timezone
 from upload_parser import parse_upload_for_urls
+from dotenv import load_dotenv
+
+ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+load_dotenv(dotenv_path=ENV_PATH) # Load environments absolutely
 
 from database import init_db, get_connection
 from models import (
@@ -29,7 +33,9 @@ from models import (
     QuantumRiskResponse, QuantumRiskResultItem,
     HndlResponse, HndlResultItem,
     AlgorithmAnalysisResponse, AlgorithmAnalysisItem,
-    AssetDetailsResponse, AssetScoreBreakdown
+    AssetDetailsResponse, AssetScoreBreakdown,
+    ScanFailuresResponse, ScanFailureItem,
+    DomainScanHistoryResponse, DomainScanHistoryItem, DomainsListResponse
 )
 from domain_parser import parse_domain
 from job_manager import create_scan_job
@@ -82,6 +88,16 @@ components_dir = os.path.join(FRONTEND_DIR, "components")
 os.makedirs(components_dir, exist_ok=True)
 app.mount("/components", StaticFiles(directory=components_dir), name="components")
 
+# Mount static CSS folder
+css_dir = os.path.join(FRONTEND_DIR, "css")
+os.makedirs(css_dir, exist_ok=True)
+app.mount("/css", StaticFiles(directory=css_dir), name="css")
+
+# Mount static JS scripts folder
+js_dir = os.path.join(FRONTEND_DIR, "js")
+os.makedirs(js_dir, exist_ok=True)
+app.mount("/js", StaticFiles(directory=js_dir), name="js")
+
 # Include auth router
 app.include_router(auth_router)
 
@@ -89,53 +105,66 @@ app.include_router(auth_router)
 # ---------------------------------------------------------------------------
 # Frontend Page Routes
 # ---------------------------------------------------------------------------
+def no_cache_file(path: str):
+    return FileResponse(path, headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
 
-@app.get("/", include_in_schema=False)
-async def serve_frontend():
-    """Serve the login page by default."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "login.html"), media_type="text/html")
-
-@app.get("/scanner", include_in_schema=False)
-async def serve_scanner():
-    """Serve the scanner landing page."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
-
-
-@app.get("/scan-progress/{scan_id}", include_in_schema=False)
-async def serve_scan_progress(scan_id: int):
-    """Serve the scan progress page."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "scan_progress.html"), media_type="text/html")
+@app.get("/")
+async def root():
+    return no_cache_file(os.path.join(FRONTEND_DIR, "index.html"))
 
 
-@app.get("/dashboard/{scan_id}", include_in_schema=False)
-async def serve_dashboard(scan_id: int):
-    """Serve the results dashboard page."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "dashboard.html"), media_type="text/html")
+@app.get("/login")
+async def login_page():
+    return no_cache_file(os.path.join(FRONTEND_DIR, "login.html"))
 
 
-@app.get("/login", include_in_schema=False)
-async def serve_login():
-    """Serve the login/register page."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "login.html"), media_type="text/html")
+@app.get("/scanner")
+async def old_scanner_page():
+    return RedirectResponse(url="/")
 
 
-@app.get("/user-dashboard", include_in_schema=False)
-async def serve_user_dashboard():
-    """Serve the user dashboard page."""
-    return FileResponse(os.path.join(FRONTEND_DIR, "user_dashboard.html"), media_type="text/html")
+@app.get("/dashboard")
+async def default_dashboard_page():
+    return no_cache_file(os.path.join(FRONTEND_DIR, "dashboard.html"))
+
+
+@app.get("/dashboard/{scan_id}")
+async def dashboard_pagelet(scan_id: str):
+    return no_cache_file(os.path.join(FRONTEND_DIR, "dashboard.html"))
+
+
+@app.get("/user-dashboard")
+async def user_dashboard_page():
+    return no_cache_file(os.path.join(FRONTEND_DIR, "user_dashboard.html"))
+
+
+@app.get("/scan-progress/{scan_id}")
+async def scan_progress_page(scan_id: str):
+    return no_cache_file(os.path.join(FRONTEND_DIR, "scan_progress.html"))
+
+@app.get("/schedules")
+async def schedules_page():
+    return no_cache_file(os.path.join(FRONTEND_DIR, "schedules.html"))
+
+@app.get("/api/config/agent-key")
+async def get_agent_key(current_user: dict = Depends(get_current_user)):
+    return {"key": os.environ.get("GEMINI_API_KEY", "")}
 
 
 @app.post("/scan", response_model=ScanResponse)
 async def start_scan(
     request: ScanRequest,
-    force: bool = Query(False),
     authorization: str = Header(None),
 ):
     """
     Submit a domain or URL for scanning.
 
-    If a cached result exists (within 24h) and ``force`` is False,
-    return the cached scan_id with status ``cached``.
+    Always creates a new scan job (no caching).
+    Every scan is timestamped and tracked for historical analysis.
     Optionally links the scan to a user if Authorization header is provided.
     """
     try:
@@ -153,28 +182,9 @@ async def start_scan(
         if payload:
             user_id = payload["sub"]
 
-    # Check cache (unless force=true)
-    if not force:
-        conn = get_connection()
-        try:
-            now = datetime.now(timezone.utc).isoformat()
-            cached = conn.execute(
-                "SELECT scan_id FROM scan_cache WHERE domain = ? AND expires_at > ? ORDER BY id DESC LIMIT 1;",
-                (domain, now),
-            ).fetchone()
-        finally:
-            conn.close()
-
-        if cached:
-            print(f"Cache hit for {domain} -> scan_id {cached['scan_id']}")
-            
-            # Link cached scan to user
-            if user_id:
-                _link_scan_to_user(user_id, cached["scan_id"], domain, "cached")
-            return ScanResponse(scan_id=cached["scan_id"], status="cached")
-
+    # Always create a new scan (no caching)
     scan_id = create_scan_job(domain, domain_info.parent_domain)
-    print("New scan job created:", scan_id)
+    print(f"[scan] New scan job created: {scan_id} for domain {domain}")
 
     # Link new scan to user
     if user_id:
@@ -224,6 +234,87 @@ async def get_scan_status(scan_id: int):
     )
 
 
+@app.get("/domains", response_model=DomainsListResponse)
+async def list_scanned_domains():
+    """
+    Return a list of all uniquely scanned domains.
+    """
+    conn = get_connection()
+    try:
+        # Get unique target domains from all scans
+        rows = conn.execute(
+            """
+            SELECT DISTINCT target_domain 
+            FROM scans 
+            ORDER BY target_domain;
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    domains = [row["target_domain"] for row in rows]
+    return DomainsListResponse(total_domains=len(domains), domains=domains)
+
+
+@app.get("/domain/{domain}/scans", response_model=DomainScanHistoryResponse)
+async def get_domain_scan_history(domain: str):
+    """
+    Return all historical scans for a specific domain in chronological order.
+    Includes summary stats for each scan (TLS count, failure count).
+    """
+    conn = get_connection()
+    try:
+        # Get all scans for this domain
+        scan_rows = conn.execute(
+            """
+            SELECT id, target_domain, status, created_at 
+            FROM scans 
+            WHERE target_domain = ? 
+            ORDER BY created_at DESC;
+            """,
+            (domain,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not scan_rows:
+        raise HTTPException(status_code=404, detail=f"No scans found for domain {domain}")
+
+    scans = []
+    for scan_row in scan_rows:
+        scan_id = scan_row["id"]
+        
+        # Count TLS results
+        conn = get_connection()
+        try:
+            tls_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM tls_results WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchone()["cnt"]
+            
+            failure_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM scan_failures WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchone()["cnt"]
+        finally:
+            conn.close()
+        
+        scans.append(DomainScanHistoryItem(
+            scan_id=scan_id,
+            domain=scan_row["target_domain"],
+            status=scan_row["status"],
+            tls_count=tls_count,
+            failure_count=failure_count,
+            created_at=scan_row["created_at"],
+        ))
+
+    return DomainScanHistoryResponse(
+        domain=domain,
+        total_scans=len(scans),
+        scans=scans,
+    )
+
+
 @app.get("/scan/{scan_id}/assets", response_model=AssetsResponse)
 async def get_scan_assets(scan_id: int):
     """
@@ -252,9 +343,12 @@ async def get_scan_assets(scan_id: int):
 
 
 @app.get("/scan/{scan_id}/tls", response_model=TlsResultsResponse)
-async def get_scan_tls(scan_id: int):
+async def get_scan_tls(scan_id: int, exclude_failed: bool = Query(False, description="Exclude TLS scans with no cipher suite (failed scans)")):
     """
     Return all TLS scan results for a given scan.
+    
+    Parameters:
+    - exclude_failed: If True, filters out subdomains where TLS handshake failed (tls_version is NULL)
     """
     conn = get_connection()
     try:
@@ -265,16 +359,25 @@ async def get_scan_tls(scan_id: int):
         if scan is None:
             raise HTTPException(status_code=404, detail="Scan not found")
 
-        rows = conn.execute(
+        # Build query based on exclude_failed flag
+        if exclude_failed:
+            query = """
+            SELECT id, hostname, port, tls_version, cipher_suite,
+                   key_algorithm, key_size, signature_algorithm, certificate_expiry
+            FROM tls_results
+            WHERE scan_id = ? AND tls_version IS NOT NULL AND tls_version != ''
+            ORDER BY hostname;
             """
+        else:
+            query = """
             SELECT id, hostname, port, tls_version, cipher_suite,
                    key_algorithm, key_size, signature_algorithm, certificate_expiry
             FROM tls_results
             WHERE scan_id = ?
             ORDER BY hostname;
-            """,
-            (scan_id,),
-        ).fetchall()
+            """
+        
+        rows = conn.execute(query, (scan_id,)).fetchall()
     finally:
         conn.close()
 
@@ -426,21 +529,75 @@ async def get_algorithm_analysis(scan_id: int):
     finally:
         conn.close()
 
-    results = [
-        AlgorithmAnalysisItem(
+    results = []
+    for row in rows:
+        try:
+            # Convert quantum_risk_estimate to int, defaulting to 0 if it's a string like "unknown"
+            qr_estimate = row["quantum_risk_estimate"]
+            if isinstance(qr_estimate, str):
+                try:
+                    qr_estimate = int(qr_estimate)
+                except (ValueError, TypeError):
+                    qr_estimate = 0
+            
+            item = AlgorithmAnalysisItem(
+                hostname=row["hostname"],
+                cipher_suite=row["cipher_suite"],
+                key_exchange=row["key_exchange"],
+                signature=row["signature"],
+                encryption=row["encryption"],
+                hash=row["hash"],
+                classification=row["classification"],
+                quantum_risk_estimate=qr_estimate,
+            )
+            results.append(item)
+        except Exception as e:
+            print(f"Error processing row {row['hostname']}: {e}")
+            raise
+
+    return AlgorithmAnalysisResponse(scan_id=scan_id, results=results)
+
+
+@app.get("/scan/{scan_id}/failures", response_model=ScanFailuresResponse)
+async def get_scan_failures(scan_id: int):
+    """
+    Return all domains that failed to scan with detailed failure reasons.
+    Includes failure category and reason for easy triage and debugging.
+    """
+    conn = get_connection()
+    try:
+        # Verify scan exists
+        scan = conn.execute(
+            "SELECT id FROM scans WHERE id = ?;", (scan_id,)
+        ).fetchone()
+        if scan is None:
+            raise HTTPException(status_code=404, detail="Scan not found")
+
+        rows = conn.execute(
+            """
+            SELECT id, hostname, failure_category, failure_reason, attempt_count, created_at
+            FROM scan_failures
+            WHERE scan_id = ?
+            ORDER BY created_at DESC;
+            """,
+            (scan_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    failures = [
+        ScanFailureItem(
+            id=row["id"],
             hostname=row["hostname"],
-            cipher_suite=row["cipher_suite"],
-            key_exchange=row["key_exchange"],
-            signature=row["signature"],
-            encryption=row["encryption"],
-            hash=row["hash"],
-            classification=row["classification"],
-            quantum_risk_estimate=row["quantum_risk_estimate"],
+            failure_category=row["failure_category"],
+            failure_reason=row["failure_reason"],
+            attempt_count=row["attempt_count"],
+            created_at=row["created_at"],
         )
         for row in rows
     ]
 
-    return AlgorithmAnalysisResponse(scan_id=scan_id, results=results)
+    return ScanFailuresResponse(scan_id=scan_id, total_failures=len(failures), failures=failures)
 
 
 @app.get("/asset/{asset_id}", response_model=AssetDetailsResponse)
@@ -833,6 +990,245 @@ async def delete_scan(scan_id: int, authorization: str = Header(None)):
         conn.close()
 
     return JSONResponse({"status": "deleted", "scan_id": scan_id})
+
+# ---------------------------------------------------------------------------
+# Scheduling System Routes
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta
+from typing import Optional
+
+def calculate_next_run(frequency: str, custom_hours: Optional[int] = None) -> datetime:
+    now = datetime.now(timezone.utc)
+    if frequency == 'daily':
+        return now + timedelta(days=1)
+    elif frequency == 'weekly':
+        return now + timedelta(weeks=1)
+    elif frequency == 'monthly':
+        return now + timedelta(days=30)
+    elif frequency == 'custom' and custom_hours:
+        return now + timedelta(hours=custom_hours)
+    return now + timedelta(days=1)
+
+class ScheduleCreate(BaseModel):
+    domain: str
+    frequency: str
+    custom_interval_hours: Optional[int] = None
+    notify_on_change: bool = False
+    start_immediately: bool = False
+
+class ScheduleUpdate(BaseModel):
+    frequency: str
+    notify_on_change: bool = False
+    custom_interval_hours: Optional[int] = None
+
+@app.post("/api/schedules/create")
+async def create_schedule(request: ScheduleCreate, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    user_id = user["sub"]
+    
+    try:
+        domain_info = parse_domain(request.domain)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+        
+    domain = domain_info.host
+    now = datetime.now(timezone.utc).isoformat()
+    next_run = calculate_next_run(request.frequency, request.custom_interval_hours).isoformat()
+    
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO scheduled_scans (domain, frequency, custom_interval_hours, created_by, created_at, next_run_at, notify_on_change)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (domain, request.frequency, request.custom_interval_hours, user_id, now, next_run, 1 if request.notify_on_change else 0)
+        )
+        schedule_id = cursor.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Schedule already exists or invalid parameters.")
+    finally:
+        conn.close()
+        
+    if request.start_immediately:
+        try:
+            # Reusing the run-now logic
+            await run_schedule_now(schedule_id, authorization)
+        except Exception:
+            pass # Failing immediate trigger should not fail creation
+            print(f"Failed to start scheduled scan immediately for {domain}")
+            
+    return {"schedule_id": schedule_id, "domain": domain, "frequency": request.frequency, "next_run_at": next_run, "message": "Schedule created successfully"}
+
+@app.get("/api/schedules/list")
+async def list_schedules(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    user_id = user["sub"]
+    
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, domain, frequency, is_active, next_run_at, last_run_at, last_risk_score, prev_risk_score, run_count
+            FROM scheduled_scans
+            WHERE created_by = ?
+            ORDER BY next_run_at ASC
+            """,
+            (user_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+        
+    schedules = []
+    for row in rows:
+        last_score = row["last_risk_score"]
+        prev_score = row["prev_risk_score"]
+        delta = None
+        if last_score is not None and prev_score is not None:
+             delta = round(last_score - prev_score, 2)
+             
+        schedules.append({
+            "id": row["id"],
+            "domain": row["domain"],
+            "frequency": row["frequency"],
+            "is_active": bool(row["is_active"]),
+            "next_run_at": row["next_run_at"],
+            "last_run_at": row["last_run_at"],
+            "last_risk_score": last_score,
+            "prev_risk_score": prev_score,
+            "risk_delta": delta,
+            "run_count": row["run_count"]
+        })
+        
+    return {"schedules": schedules}
+
+@app.patch("/api/schedules/{schedule_id}/pause")
+async def pause_schedule(schedule_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE scheduled_scans SET is_active = 0 WHERE id = ? AND created_by = ?", (schedule_id, user["sub"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"message": "Schedule paused", "schedule_id": schedule_id}
+
+@app.patch("/api/schedules/{schedule_id}/resume")
+async def resume_schedule(schedule_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT frequency, custom_interval_hours FROM scheduled_scans WHERE id = ? AND created_by = ?", (schedule_id, user["sub"])).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+            
+        next_run = calculate_next_run(row["frequency"], row["custom_interval_hours"]).isoformat()
+        conn.execute("UPDATE scheduled_scans SET is_active = 1, next_run_at = ? WHERE id = ?", (next_run, schedule_id))
+        conn.commit()
+    finally:
+        conn.close()
+        
+    return {"message": "Schedule resumed", "schedule_id": schedule_id, "next_run_at": next_run}
+
+@app.patch("/api/schedules/{schedule_id}/update")
+async def update_schedule(schedule_id: int, request: ScheduleUpdate, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    
+    next_run = calculate_next_run(request.frequency, request.custom_interval_hours).isoformat()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE scheduled_scans SET frequency = ?, custom_interval_hours = ?, notify_on_change = ?, next_run_at = ? WHERE id = ? AND created_by = ?",
+            (request.frequency, request.custom_interval_hours, 1 if request.notify_on_change else 0, next_run, schedule_id, user["sub"])
+        )
+        conn.commit()
+    finally:
+        conn.close()
+        
+    return {"message": "Schedule updated", "schedule_id": schedule_id, "next_run_at": next_run}
+
+@app.delete("/api/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM scheduled_scans WHERE id = ? AND created_by = ?", (schedule_id, user["sub"]))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"message": "Schedule deleted", "schedule_id": schedule_id}
+
+@app.get("/api/schedules/{schedule_id}/history")
+async def get_schedule_history(schedule_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    conn = get_connection()
+    try:
+        schedule = conn.execute("SELECT domain FROM scheduled_scans WHERE id = ? AND created_by = ?", (schedule_id, user["sub"])).fetchone()
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+            
+        rows = conn.execute(
+            """
+            SELECT scan_id, triggered_at, completed_at, status, risk_score, subdomains_found, subdomains_scanned
+            FROM schedule_run_history
+            WHERE schedule_id = ?
+            ORDER BY triggered_at DESC
+            """,
+            (schedule_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+        
+    history = []
+    for r in rows:
+        history.append({
+            "run_id": r["scan_id"],
+            "triggered_at": r["triggered_at"],
+            "completed_at": r["completed_at"],
+            "status": r["status"],
+            "risk_score": r["risk_score"],
+            "subdomains_found": r["subdomains_found"],
+            "subdomains_scanned": r["subdomains_scanned"]
+        })
+        
+    return {"schedule_id": schedule_id, "domain": schedule["domain"], "history": history}
+
+@app.post("/api/schedules/{schedule_id}/run-now")
+async def run_schedule_now(schedule_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    user_id = user["sub"]
+    conn = get_connection()
+    try:
+        schedule = conn.execute("SELECT domain, id FROM scheduled_scans WHERE id = ? AND created_by = ?", (schedule_id, user_id)).fetchone()
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        domain = schedule["domain"]
+    finally:
+        conn.close()
+        
+    # Queue the scan with "api" or "scheduler" source
+    scan_id = create_scan_job(domain, domain)
+    _link_scan_to_user(user_id, scan_id, domain, "queued")
+    
+    # Store immediate trigger in history tracking so it updates score
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE scans SET source = 'scheduler' WHERE id = ?", (scan_id,))
+        conn.execute(
+            "INSERT INTO schedule_run_history (schedule_id, scan_id, status, triggered_at) VALUES (?, ?, 'triggered', ?)",
+            (schedule_id, scan_id, datetime.now(timezone.utc).isoformat())
+        )
+        conn.commit()
+    finally:
+        conn.close()
+        
+    return {"message": "Scan triggered successfully", "scan_id": scan_id}
+
 
 if __name__ == "__main__":
     uvicorn.run(

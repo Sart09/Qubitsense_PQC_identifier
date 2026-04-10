@@ -149,9 +149,10 @@
     <div class="flex gap-4">
       <a href="/login" id="navAuthBtn" class="text-sm font-semibold text-slate-300 hover:text-white transition">Login /
         Register</a>
+      <a href="/schedules" id="navSchedulesBtn"
+        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My Schedules</a>
       <a href="/user-dashboard" id="navDashboardBtn"
-        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My
-        Dashboard</a>
+        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My Dashboard</a>
     </div>
   </nav>
 
@@ -261,17 +262,9 @@
 
         const data = await res.json();
 
-        if (data.status === 'cached') {
-          // Show cached message and redirect to dashboard
-          resultEl.textContent = '✅ Using cached scan result from previous analysis.';
-          resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-emerald-500/10 border border-emerald-500/30 text-emerald-400';
-          setTimeout(() => {
-            window.location.href = `/dashboard/${data.scan_id}`;
-          }, 1500);
-        } else {
-          // New scan — redirect to progress page
-          window.location.href = `/scan-progress/${data.scan_id}`;
-        }
+        // Always vector directly into the progress tracker for visual confidence, 
+        // even if the job is cached natively by backend.
+        window.location.href = `/scan-progress/${data.scan_id}`;
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
         resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-red-500/10 border border-red-500/30 text-red-400';
@@ -323,6 +316,14 @@
 
     /* ── Auth UI State ────────────────────────────────── */
     window.addEventListener('DOMContentLoaded', () => {
+      // Auto-start scanning logic from AI agent redirects properly mapped
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('autostart') === 'true' && urlParams.get('domain')) {
+        const dom = urlParams.get('domain');
+        input.value = dom;
+        setTimeout(() => submitScan(dom), 400); // Slight delay for smooth UI paint
+      }
+
       const email = localStorage.getItem('email');
       const token = localStorage.getItem('token');
       const navAuthBtn = document.getElementById('navAuthBtn');
@@ -336,6 +337,7 @@
         navAuthBtn.classList.replace('text-slate-300', 'text-red-400');
         navAuthBtn.classList.replace('hover:text-white', 'hover:text-red-300');
         navDashboardBtn.classList.remove('hidden');
+        document.getElementById('navSchedulesBtn').classList.remove('hidden');
 
         navAuthBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -347,6 +349,11 @@
       }
     });
   </script>
+
+  <!-- Qubitsense AI Agent Widget -->
+  <link rel="stylesheet" href="/css/ai-agent.css?v=2">
+  <script src="/components/ai-agent.js?v=2"></script>
+
 </body>
 
 </html>

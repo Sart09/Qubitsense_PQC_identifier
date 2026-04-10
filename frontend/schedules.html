@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedules - Quantum Proof System Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        white: '#1e293b',
+                        slate: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
+                        gray: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
+                        indigo: { 300: '#be123c', 400: '#e11d48', 500: '#a80024', 600: '#88001b' },
+                        amber: { 400: '#f59e0b', 500: '#d97706' },
+                    }
+                }
+            }
+        };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/components/pnb-theme.css">
+    <style>
+        body {
+            background-color: #f1f5f9;
+            background-image: url('/components/pnb_bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: #334155;
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-active {
+            background: rgba(34, 197, 94, .15);
+            color: #16a34a;
+        }
+
+        .badge-paused {
+            background: rgba(100, 116, 139, .15);
+            color: #475569;
+        }
+
+        .score-improve {
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .score-worsen {
+            color: #dc2626;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body class="text-white">
+
+    <header class="relative z-20 border-b border-gray-700/50 bg-[#a80024] shadow-md" style="color: #ffffff;">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3 w-1/3">
+                <span class="text-2xl drop-shadow-md">🏦</span>
+                <h1 class="font-extrabold text-lg tracking-tight hidden md:block">Punjab National Bank <span
+                        class="text-amber-400 font-medium px-2">—</span> Scheduling</h1>
+            </div>
+            <div class="flex justify-center w-1/3 gap-4">
+                <a href="/user-dashboard"
+                    class="text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md">Scans
+                    Inventory</a>
+                <a href="/scanner"
+                    class="text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md">Start
+                    Scan</a>
+            </div>
+            <div class="flex items-center justify-end gap-4 w-1/3">
+                <span id="userEmail" class="text-xs text-amber-100/70 tracking-wide"></span>
+                <button onclick="logout()"
+                    class="px-4 py-1.5 rounded-lg bg-[#88001b] border border-red-900/50 text-red-100 text-sm hover:bg-red-900 transition shadow-inner">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-8">
+        <div class="flex items-center justify-between mb-8 mt-4">
+            <div>
+                <h1 class="text-3xl font-bold" style="color: #1e293b;">Automated Scheduling</h1>
+                <p class="text-sm text-gray-500 mt-1">Configure recurring post-quantum risk scans</p>
+            </div>
+            <button onclick="openCreateModal()"
+                class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-500/20">
+                + New Schedule
+            </button>
+        </div>
+
+        <div class="glass-card rounded-2xl overflow-hidden mb-8">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left" style="color:#1e293b;">
+                    <thead>
+                        <tr class="bg-gray-100 border-b border-gray-200 text-sm text-gray-500">
+                            <th class="p-4 font-semibold">Domain</th>
+                            <th class="p-4 font-semibold">Frequency</th>
+                            <th class="p-4 font-semibold">Status</th>
+                            <th class="p-4 font-semibold">Last Scan</th>
+                            <th class="p-4 font-semibold">Next Scan</th>
+                            <th class="p-4 font-semibold">Risk Score</th>
+                            <th class="p-4 font-semibold text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedulesTable" class="divide-y divide-gray-100 text-sm">
+                        <tr>
+                            <td colspan="7" class="p-8 text-center text-gray-500">Loading schedules...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Create Schedule Modal -->
+    <div id="createModal"
+        class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-[450px] shadow-2xl p-6" style="color: #1e293b;">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h2 class="text-xl font-bold">Add Schedule</h2>
+                <button onclick="closeCreateModal()"
+                    class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+            </div>
+            <form id="createForm">
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">Target Domain</label>
+                    <input type="text" id="domain" required
+                        class="w-full border rounded-lg p-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                        placeholder="example.com">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">Frequency</label>
+                    <select id="frequency" class="w-full border rounded-lg p-2 focus:border-indigo-500 outline-none"
+                        onchange="toggleCustomHours()">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="custom">Custom Hours</option>
+                    </select>
+                </div>
+                <div class="mb-4 hidden" id="customHoursWrapper">
+                    <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">Interval (Hours)</label>
+                    <input type="number" id="customHours" min="1" class="w-full border rounded-lg p-2 outline-none"
+                        placeholder="24">
+                </div>
+                <div class="mb-4 flex items-center gap-3">
+                    <input type="checkbox" id="startNow" class="w-4 h-4 cursor-pointer">
+                    <label class="text-sm font-medium text-gray-700 cursor-pointer" for="startNow">Run immediately on
+                        save</label>
+                </div>
+                <div class="mb-6 flex items-center gap-3">
+                    <input type="checkbox" id="notifyChange" class="w-4 h-4 cursor-pointer">
+                    <label class="text-sm font-medium text-gray-700 cursor-pointer" for="notifyChange">Notify on risk
+                        score changes</label>
+                </div>
+                <button type="submit"
+                    class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:bg-indigo-700 transition">Schedule
+                    Scan</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal"
+        class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] shadow-2xl flex flex-col"
+            style="color: #1e293b;">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold"><span id="historyDomain"></span> History</h2>
+                <button onclick="closeHistoryModal()"
+                    class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+            </div>
+            <div id="historyContent" class="overflow-y-auto p-6 divide-y">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/schedules.js"></script>
+
+    <!-- Qubitsense AI Agent Widget -->
+    <link rel="stylesheet" href="/css/ai-agent.css?v=2">
+    <script src="/components/ai-agent.js?v=2"></script>
+
+</body>
+
+</html>

@@ -117,9 +117,14 @@ def store_algorithm_analysis(
     encryption: str,
     hash_alg: str,
     classification: str,
-    quantum_risk_estimate: int,
+    quantum_risk_estimate: int | str,
 ) -> int:
-    """Insert an algorithm analysis result row."""
+    """
+    Insert an algorithm analysis result row.
+    
+    Handles both numeric risk estimates and string values like "unknown"
+    for graceful degradation when analysis fails.
+    """
     conn = get_connection()
     try:
         cursor = conn.execute(
@@ -134,7 +139,62 @@ def store_algorithm_analysis(
             (
                 scan_id, hostname, cipher_suite,
                 key_exchange, signature, encryption, hash_alg,
-                classification, quantum_risk_estimate,
+                classification, str(quantum_risk_estimate),
+                datetime.now(timezone.utc).isoformat()
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def store_scan_failure(
+    scan_id: int,
+    hostname: str,
+    failure_category: str,
+    failure_reason: str,
+    attempt_count: int = 1,
+    failure_code: str = "",
+) -> int:
+    """
+    Insert a scan failure record for tracking and reporting.
+    
+    Parameters
+    ----------
+    scan_id : int
+        Parent scan ID
+    hostname : str
+        The hostname that failed to scan
+    failure_category : str
+        Category of failure (e.g., 'CONNECTION_TIMEOUT', 'CERT_ERROR', 'DNS_RESOLUTION_ERROR')
+    failure_reason : str
+        Detailed reason for failure
+    attempt_count : int
+        Number of attempts made before failure
+    failure_code : str
+        Structured failure code for dashboard breakdown:
+        DNS_NO_RECORD, TCP_TIMEOUT, TCP_REFUSED, TLS_HANDSHAKE_FAIL,
+        TLS_LEGACY_CIPHER, CERT_MISMATCH
+    
+    Returns
+    -------
+    int
+        Row ID of the inserted failure record
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO scan_failures (
+                scan_id, hostname, failure_category, failure_reason,
+                failure_code, attempt_count, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                scan_id, hostname, failure_category, failure_reason,
+                failure_code, attempt_count,
                 datetime.now(timezone.utc).isoformat()
             ),
         )

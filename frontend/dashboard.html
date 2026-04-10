@@ -280,7 +280,33 @@
         </section>
 
 
-        <!-- Row 2: CBOM Analytics -->
+        <!-- Failed Domains / Scan Failures Report -->
+        <section class="panel p-6 fade-in fade-in-d2">
+            <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+                <span class="text-lg">⚠️</span> Scan Failures Report
+            </h2>
+            <div class="overflow-auto max-h-[350px]">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-300/50">
+                            <th class="text-left py-2 pr-4 font-bold">Hostname</th>
+                            <th class="text-left py-2 pr-4 font-bold">Failure Category</th>
+                            <th class="text-left py-2 pr-4 font-bold">Reason</th>
+                            <th class="text-center py-2 font-bold">Attempts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="failuresTableBody">
+                        <tr>
+                            <td colspan="4" class="text-center py-8 text-slate-400">Loading failures…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3 text-xs text-slate-500">
+                <span id="failuresSummary">Total Failures: 0</span>
+            </div>
+        </section>
+
         <section class="panel p-6 fade-in fade-in-d2">
             <h2 class="text-base font-bold mb-6 flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -361,6 +387,13 @@
                             type="radio" name="subTab" value="false-positive" onchange="renderAssetTable()">
                         False-Positive</label>
                 </div>
+                <!-- Hide Failed TLS Toggle -->
+                <label
+                    class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/40 px-3 py-2 rounded-lg border border-slate-700/30 cursor-pointer hover:text-amber-400 transition">
+                    <input type="checkbox" id="hideFailedTls" onchange="renderAssetTable()"
+                        class="w-3.5 h-3.5 accent-amber-500">
+                    <span>Hide Failed TLS</span>
+                </label>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -542,6 +575,8 @@
         /* ── Fetch all data in parallel ────────────────────── */
         async function loadDashboard() {
             try {
+                console.log(`[Dashboard] Loading scan ${scanId}...`);
+
                 const [statusRes, tlsRes, qrRes, hndlRes, algoRes] = await Promise.all([
                     fetch(`/scan/${scanId}`),
                     fetch(`/scan/${scanId}/tls`),
@@ -550,11 +585,20 @@
                     fetch(`/scan/${scanId}/algorithm-analysis`)
                 ]);
 
+                // Check response status codes
+                if (!statusRes.ok) console.error(`[Dashboard] Status API failed: ${statusRes.status}`);
+                if (!tlsRes.ok) console.error(`[Dashboard] TLS API failed: ${tlsRes.status}`);
+                if (!qrRes.ok) console.error(`[Dashboard] Quantum Risk API failed: ${qrRes.status}`);
+                if (!hndlRes.ok) console.error(`[Dashboard] HNDL API failed: ${hndlRes.status}`);
+                if (!algoRes.ok) console.error(`[Dashboard] Algorithm API failed: ${algoRes.status}`);
+
                 const statusData = await statusRes.json();
                 const tlsJson = await tlsRes.json();
                 const qrJson = await qrRes.json();
                 const hndlJson = await hndlRes.json();
                 const algoJson = await algoRes.json();
+
+                console.log('[Dashboard] API Responses:', { statusData, tlsJson, qrJson, hndlJson, algoJson });
 
                 domain = statusData.domain || '';
                 tlsData = tlsJson.results || [];
@@ -562,9 +606,11 @@
                 hndlData = hndlJson.targets || [];
                 algoData = algoJson.results || [];
 
+                console.log(`[Dashboard] Data loaded: TLS=${tlsData.length}, QR=${qrData.length}, HNDL=${hndlData.length}, Algo=${algoData.length}`);
+
                 // ── Header
                 document.getElementById('headerDomain').textContent = domain;
-                document.getElementById('statAssets').textContent = tlsData.length;
+                document.getElementById('statAssets').textContent = tlsData.length || '0';
 
                 // Enterprise Cyber Rating & Posture Tier
                 let avgRisk = 0;
@@ -572,30 +618,38 @@
                 let tier = 'Pending';
                 let tierColor = 'text-slate-400';
 
-                if (qrData.length > 0) {
-                    avgRisk = Math.round(qrData.reduce((s, r) => s + r.risk_score, 0) / qrData.length);
-                    // Map 0-100 risk score to 0-1000 rating (where lower risk = higher rating)
-                    rating = (100 - avgRisk) * 10;
+                if (qrData && qrData.length > 0) {
+                    const validRisks = qrData.filter(r => typeof r.risk_score === 'number').map(r => r.risk_score);
+                    if (validRisks.length > 0) {
+                        avgRisk = Math.round(validRisks.reduce((s, r) => s + r, 0) / validRisks.length);
+                        // Map 0-100 risk score to 0-1000 rating (where lower risk = higher rating)
+                        rating = Math.round((100 - avgRisk) * 10);
 
-                    if (rating < 400) { tier = 'Legacy'; tierColor = 'text-red-500'; }
-                    else if (rating >= 700) { tier = 'Elite-PQC'; tierColor = 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]'; }
-                    else { tier = 'Standard'; tierColor = 'text-amber-400'; }
+                        if (rating < 400) { tier = 'Legacy'; tierColor = 'text-red-500'; }
+                        else if (rating >= 700) { tier = 'Elite-PQC'; tierColor = 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]'; }
+                        else { tier = 'Standard'; tierColor = 'text-amber-400'; }
 
-                    document.getElementById('statCyberRating').textContent = rating;
-                    document.getElementById('statTier').textContent = tier;
-                    document.getElementById('statTier').className = `text-2xl font-extrabold mt-1 ${tierColor}`;
+                        document.getElementById('statCyberRating').textContent = rating;
+                        document.getElementById('statTier').textContent = tier;
+                        document.getElementById('statTier').className = `text-2xl font-extrabold mt-1 ${tierColor}`;
+                    } else {
+                        document.getElementById('statCyberRating').textContent = '0';
+                        document.getElementById('statTier').textContent = 'N/A';
+                    }
                 } else {
-                    document.getElementById('statCyberRating').textContent = 'N/A';
+                    document.getElementById('statCyberRating').textContent = '0';
                     document.getElementById('statTier').textContent = 'N/A';
                 }
 
                 // Critical Risk Assets Calculation
-                const critAssets = qrData.filter(r => r.risk_score >= 50).length;
+                const critAssets = qrData && qrData.length > 0 ?
+                    qrData.filter(r => r.risk_score >= 50).length : 0;
                 document.getElementById('statCritRisk').textContent = critAssets;
 
                 // ── Render sections
                 renderAssetTable();
                 renderHndlPanel();
+                renderFailuresTable();
                 try { renderRiskChart(); } catch (e) { console.error('Risk Donut Error:', e); }
                 try { renderHeatmap(); } catch (e) { console.error('Heatmap Error:', e); }
                 try { renderCbom(); } catch (e) { console.error('CBOM Error:', e); }
@@ -723,6 +777,7 @@
 
             const searchQuery = (document.getElementById('assetSearch').value || '').toLowerCase();
             const subTab = document.querySelector('input[name="subTab"]:checked')?.value || 'all';
+            const hideFailedTls = document.getElementById('hideFailedTls')?.checked || false;
 
             // Filter logic
             const filteredTls = tlsData.filter(tls => {
@@ -735,12 +790,18 @@
                 else if (subTab === 'false-positive') matchesSubTab = isFalsePos;
                 else if (subTab === 'confirmed') matchesSubTab = !isNew && !isFalsePos;
 
+                // Hide failed TLS results if checkbox is enabled
+                let tlsIsValid = true;
+                if (hideFailedTls) {
+                    tlsIsValid = tls.tls_version && tls.tls_version.trim() !== '' && tls.tls_version !== '—';
+                }
+
                 let matchesSearch = true;
                 if (searchQuery) {
                     const str = `${tls.hostname} ${tls.ip || ''} ${tls.tls_version || ''} ${tls.cipher_suite || ''} ${tls.signature_algorithm || ''}`.toLowerCase();
                     matchesSearch = str.includes(searchQuery);
                 }
-                return matchesSubTab && matchesSearch;
+                return matchesSubTab && matchesSearch && tlsIsValid;
             });
 
             if (filteredTls.length === 0) {
@@ -877,6 +938,69 @@
           </tr>`;
             }).join('');
         }
+
+        /* ── Scan Failures Panel ──────────────────────────────── */
+        async function renderFailuresTable() {
+            try {
+                console.log(`[Failures] Fetching failures for scan ${scanId}...`);
+                const response = await fetch(`/scan/${scanId}/failures`);
+                if (!response.ok) {
+                    console.error(`[Failures] API returned ${response.status}`);
+                    document.getElementById('failuresTableBody').innerHTML =
+                        '<tr><td colspan="4" class="text-center py-2 text-xs text-slate-400">Could not load failures</td></tr>';
+                    return;
+                }
+
+                const data = await response.json();
+                const failures = data.failures || [];
+                const totalFailures = data.total_failures || 0;
+
+                console.log(`[Failures] Loaded ${failures.length} failure records`);
+
+                if (failures.length === 0) {
+                    document.getElementById('failuresTableBody').innerHTML =
+                        '<tr><td colspan="4" class="text-center py-8 text-slate-400 font-bold">✓ No scan failures - all domains scanned successfully!</td></tr>';
+                    document.getElementById('failuresSummary').textContent = 'Total Failures: 0 ✓';
+                    return;
+                }
+
+                // Category color mapping
+                const categoryColors = {
+                    'DNS_RESOLUTION_ERROR': 'bg-blue-500/20 text-blue-700',
+                    'CONNECTION_REFUSED': 'bg-red-500/20 text-red-700',
+                    'CONNECTION_TIMEOUT': 'bg-orange-500/20 text-orange-700',
+                    'CERT_VERIFICATION_ERROR': 'bg-yellow-500/20 text-yellow-700',
+                    'CERT_ERROR': 'bg-red-600/20 text-red-800',
+                    'SSL_ERROR': 'bg-red-500/20 text-red-700',
+                    'PROTOCOL_ERROR': 'bg-indigo-500/20 text-indigo-700',
+                    'RESOURCE_LIMIT': 'bg-purple-500/20 text-purple-700',
+                    'UNKNOWN_ERROR': 'bg-slate-500/20 text-slate-700'
+                };
+
+                document.getElementById('failuresTableBody').innerHTML = failures.map(f => `
+                    <tr class="border-b border-slate-300/30 hover:bg-slate-100/30 transition">
+                        <td class="py-3 pr-4 text-slate-700 font-mono text-xs">${f.hostname || 'N/A'}</td>
+                        <td class="py-3 pr-4">
+                            <span class="inline-block px-2 py-1 rounded text-xs font-bold ${categoryColors[f.failure_category] || categoryColors['UNKNOWN_ERROR']}">
+                                ${f.failure_category || 'UNKNOWN'}
+                            </span>
+                        </td>
+                        <td class="py-3 pr-4 text-slate-600 text-xs max-w-md truncate" title="${f.failure_reason || 'Unknown reason'}">
+                            ${f.failure_reason || 'No details available'}
+                        </td>
+                        <td class="py-3 text-center font-bold text-slate-700">${f.attempt_count || 1}</td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('failuresSummary').textContent =
+                    `Total Failures: ${totalFailures} ${totalFailures > 0 ? '(see details below)' : '✓'}`;
+            } catch (err) {
+                console.error('[Failures] Load error:', err);
+                document.getElementById('failuresTableBody').innerHTML =
+                    `<tr><td colspan="4" class="text-center py-2 text-xs text-red-600">Error loading failures: ${err.message}</td></tr>`;
+            }
+        }
+
 
         /* ── Risk Chart ─────────────────────────────────────── */
         function renderRiskChart() {
@@ -1028,6 +1152,11 @@
         /* ── Init ──────────────────────────────────────────── */
         loadDashboard();
     </script>
+
+    <!-- Qubitsense AI Agent Widget -->
+    <link rel="stylesheet" href="/css/ai-agent.css?v=2">
+    <script src="/components/ai-agent.js?v=2"></script>
+
 </body>
 
 </html>

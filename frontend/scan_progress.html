@@ -235,48 +235,146 @@
         /* ── Stage simulation based on status ──────────────── */
         const STAGES = ['discovery', 'tls', 'quantum', 'hndl', 'graph'];
 
-        let previousStatus = '';
-        let simulatedProgress = 0;
-
         function updateStepsFromLogs(logs, status) {
-            // Read latest log hints to determine real scan position
-            if (status === 'completed') {
-                simulatedProgress = 100;
-            } else {
-                const text = logs.map(l => l.message).join(' ');
-                if (text.includes('finalized and stored')) simulatedProgress = 95;
-                else if (text.includes('Applying classified intelligence')) simulatedProgress = 80;
-                else if (text.includes('Running deep TLS')) simulatedProgress = 50;
-                else if (text.includes('Resolving IP clusters')) simulatedProgress = 30;
-                else if (text.includes('Starting discovery')) simulatedProgress = 10;
-                else if (status === 'running') simulatedProgress = 5;
+            // Parse new [PHASE] format progress indicators
+            // Format examples:
+            // [DISCOVERY] Discovered 50 unique subdomains...
+            // [IP RESOLUTION] Resolved 20/50 domains
+            // [TLS ANALYSIS] Scanned 5/20 endpoints (✓ 5 | ✗ 0)
+            // [STORAGE] Stored 25/50 domain results
+
+            let discoveryProgress = 0;
+            let tlsProgress = 0;
+            let quantumProgress = 0;
+            let hndlProgress = 0;
+            let graphProgress = 0;
+
+            const fullText = logs.map(l => l.message).join('\n');
+
+            // Parse DISCOVERY phase
+            const discoveryMatch = fullText.match(/\[DISCOVERY[\s✓]*\]/);
+            if (discoveryMatch) {
+                if (fullText.includes('[DISCOVERY ✓]')) {
+                    discoveryProgress = 100;
+                } else {
+                    discoveryProgress = 100; // Discovery completes quickly
+                }
             }
 
-            STAGES.forEach((stage, idx) => {
+            // Parse IP RESOLUTION phase
+            const resolutionMatch = fullText.match(/\[IP RESOLUTION\] Resolved (\d+)\/(\d+) domains/);
+            if (resolutionMatch) {
+                const current = parseInt(resolutionMatch[1]);
+                const total = parseInt(resolutionMatch[2]);
+                tlsProgress = Math.round((current / total) * 100);
+            } else if (fullText.includes('[IP RESOLUTION ✓]')) {
+                tlsProgress = 100;
+            }
+
+            // Parse TLS ANALYSIS phase
+            const tlsMatch = fullText.match(/\[TLS ANALYSIS\] Scanned (\d+)\/(\d+) endpoints/);
+            if (tlsMatch) {
+                const current = parseInt(tlsMatch[1]);
+                const total = parseInt(tlsMatch[2]);
+                quantumProgress = Math.round((current / total) * 100);
+            } else if (fullText.includes('[TLS ANALYSIS ✓]')) {
+                quantumProgress = 100;
+            }
+
+            // Parse STORAGE phase
+            const storageMatch = fullText.match(/\[STORAGE\] Stored (\d+)\/(\d+) domain results/);
+            if (storageMatch) {
+                const current = parseInt(storageMatch[1]);
+                const total = parseInt(storageMatch[2]);
+                hndlProgress = Math.round((current / total) * 100);
+            } else if (fullText.includes('[STORAGE ✓]')) {
+                hndlProgress = 100;
+            }
+
+            // Graph engine follows storage completion
+            if (hndlProgress === 100) {
+                graphProgress = 100;
+            }
+
+            if (status === 'completed') {
+                discoveryProgress = tlsProgress = quantumProgress = hndlProgress = graphProgress = 100;
+            }
+
+            // Update UI with actual numerical progress
+            const progressMap = {
+                'discovery': discoveryProgress,
+                'tls': tlsProgress,
+                'quantum': quantumProgress,
+                'hndl': hndlProgress,
+                'graph': graphProgress
+            };
+
+            // Extract numerical details from logs for display
+            let discoveryCount = 0;
+            let resolutionCurrent = 0, resolutionTotal = 0;
+            let tlsCurrent = 0, tlsTotal = 0;
+            let storageCurrent = 0, storageTotal = 0;
+
+            // Extract counts from log messages
+            const discoveryCountMatch = fullText.match(/\[DISCOVERY[\s✓]*\] Discovered (\d+) unique/);
+            if (discoveryCountMatch) discoveryCount = parseInt(discoveryCountMatch[1]);
+
+            const resolutionMatch2 = fullText.match(/\[IP RESOLUTION\] Resolved (\d+)\/(\d+)/);
+            if (resolutionMatch2) {
+                resolutionCurrent = parseInt(resolutionMatch2[1]);
+                resolutionTotal = parseInt(resolutionMatch2[2]);
+            }
+
+            const tlsMatch2 = fullText.match(/\[TLS ANALYSIS\] Scanned (\d+)\/(\d+)/);
+            if (tlsMatch2) {
+                tlsCurrent = parseInt(tlsMatch2[1]);
+                tlsTotal = parseInt(tlsMatch2[2]);
+            }
+
+            const storageMatch2 = fullText.match(/\[STORAGE\] Stored (\d+)\/(\d+)/);
+            if (storageMatch2) {
+                storageCurrent = parseInt(storageMatch2[1]);
+                storageTotal = parseInt(storageMatch2[2]);
+            }
+
+            STAGES.forEach((stage) => {
                 const stepEl = document.querySelector(`.step[data-step="${stage}"]`);
                 const bar = stepEl.querySelector('.step-bar');
                 const pct = stepEl.querySelector('.step-pct');
+                const icon = stepEl.querySelector('.step-icon');
 
-                // Calculate per-stage progress
-                const stageStart = (idx / STAGES.length) * 100;
-                const stageEnd = ((idx + 1) / STAGES.length) * 100;
-                let stageProgress = 0;
+                const progress = progressMap[stage] || 0;
+                bar.style.width = progress + '%';
 
-                if (simulatedProgress >= stageEnd) {
-                    stageProgress = 100;
-                } else if (simulatedProgress > stageStart) {
-                    stageProgress = ((simulatedProgress - stageStart) / (stageEnd - stageStart)) * 100;
+                // Show numerical values for better clarity
+                let displayText = progress + '%';
+                if (stage === 'discovery' && discoveryCount > 0) {
+                    displayText = `${discoveryCount} domains`;
+                } else if (stage === 'tls' && resolutionTotal > 0) {
+                    displayText = `${resolutionCurrent}/${resolutionTotal}`;
+                } else if (stage === 'quantum' && tlsTotal > 0) {
+                    displayText = `${tlsCurrent}/${tlsTotal}`;
+                } else if (stage === 'hndl' && storageTotal > 0) {
+                    displayText = `${storageCurrent}/${storageTotal}`;
                 }
 
-                bar.style.width = stageProgress + '%';
-                pct.textContent = Math.round(stageProgress) + '%';
+                pct.textContent = displayText;
 
                 // Icon states
-                const icon = stepEl.querySelector('.step-icon');
-                if (stageProgress >= 100) {
+                if (progress >= 100) {
                     icon.textContent = '✅';
-                } else if (stageProgress > 0) {
+                } else if (progress > 0) {
                     icon.textContent = '⏳';
+                } else {
+                    // Use original icons for waiting stages
+                    const originalIcons = {
+                        'discovery': '🔍',
+                        'tls': '🔒',
+                        'quantum': '⚛️',
+                        'hndl': '🕵️',
+                        'graph': '🌐'
+                    };
+                    icon.textContent = originalIcons[stage];
                 }
             });
         }
@@ -341,6 +439,11 @@
         const pollInterval = setInterval(poll, 2000);
         poll(); // initial fetch
     </script>
+
+    <!-- Qubitsense AI Agent Widget -->
+    <link rel="stylesheet" href="/css/ai-agent.css?v=2">
+    <script src="/components/ai-agent.js?v=2"></script>
+
 </body>
 
 </html>

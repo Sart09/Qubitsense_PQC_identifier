@@ -30,6 +30,7 @@ def init_db() -> None:
                 target_domain   TEXT    NOT NULL,
                 parent_domain   TEXT,
                 status          TEXT    NOT NULL DEFAULT 'queued',
+                source          TEXT    DEFAULT 'manual',
                 created_at      TEXT    NOT NULL
             );
             """
@@ -176,6 +177,76 @@ def init_db() -> None:
             );
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scan_failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_id INTEGER NOT NULL,
+                hostname TEXT NOT NULL,
+                failure_category TEXT NOT NULL,
+                failure_reason TEXT NOT NULL,
+                failure_code TEXT,
+                attempt_count INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scheduled_scans (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain          TEXT NOT NULL,
+                frequency       TEXT NOT NULL CHECK(frequency IN ('daily','weekly','monthly','custom')),
+                custom_interval_hours INTEGER,         
+                is_active       INTEGER DEFAULT 1,     
+                created_by      INTEGER,               
+                created_at      TEXT DEFAULT (datetime('now')),
+                last_run_at     TEXT,                  
+                next_run_at     TEXT NOT NULL,         
+                last_scan_id    INTEGER,               
+                last_risk_score REAL,                  
+                prev_risk_score REAL,                  
+                run_count       INTEGER DEFAULT 0,     
+                notify_on_change INTEGER DEFAULT 0,    
+                UNIQUE(domain, frequency),
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (last_scan_id) REFERENCES scans(id) ON DELETE SET NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schedule_run_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                schedule_id     INTEGER NOT NULL,      
+                scan_id         INTEGER,               
+                triggered_at    TEXT DEFAULT (datetime('now')),
+                completed_at    TEXT,
+                status          TEXT CHECK(status IN ('triggered','running','completed','failed')),
+                risk_score      REAL,
+                subdomains_found INTEGER,
+                subdomains_scanned INTEGER,
+                error_message   TEXT,
+                FOREIGN KEY(schedule_id) REFERENCES scheduled_scans(id) ON DELETE CASCADE,
+                FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE SET NULL
+            );
+            """
+        )
         conn.commit()
+
+        # Migrate existing databases: add failure_code column to scan_failures
+        try:
+            conn.execute("ALTER TABLE scan_failures ADD COLUMN failure_code TEXT;")
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+        # Migrate existing databases: add source column to scans
+        try:
+            conn.execute("ALTER TABLE scans ADD COLUMN source TEXT DEFAULT 'manual';")
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
     finally:
         conn.close()

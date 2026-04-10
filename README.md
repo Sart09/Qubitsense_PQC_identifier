@@ -9,13 +9,14 @@ Built with **FastAPI** (Python) on the backend and a modern HTML/JS frontend.
 ## Features
 
 - **Domain Scanning** — Submit any domain or URL for automated security analysis
+- **AI Assistant "Qubit"** — Integrated floating AI agent (Gemini 2.5 Flash) for chat-based scanning and risk intelligence
+- **Scan Scheduling** — Automated surveillance with recurring daily/weekly/monthly scans and risk delta tracking
+- **Discovery Intelligence** — Massive 500+ prefix brute-force engine for enterprise-grade subdomain mining
 - **TLS Deep Analysis** — Inspect TLS versions, cipher suites, key algorithms, and certificate expiry
 - **Quantum Risk Scoring** — Dynamically calculated risk scores (0–100) based on cryptographic posture
 - **HNDL Detection** — Identify assets vulnerable to "Harvest Now, Decrypt Later" attacks
 - **Algorithm Intelligence** — Classify cipher components (key exchange, signature, encryption, hash) and estimate quantum vulnerability
-- **Threat Intelligence Registry** — Curated database of cryptographic algorithms with quantum-safety ratings
-- **User Authentication** — JWT-based registration, login, and per-user scan history
-- **Scan Caching** — 24-hour result cache with force-refresh option
+- **Scan Caching** — 24-hour result cache with strictly controlled "No-Cache" UI headers
 - **QR/Barcode Upload** — Extract target URLs from uploaded images or PDFs
 - **Export Reports** — Aggregated JSON reports covering all scan dimensions
 - **Real-time Scan Logs** — Live progress tracking during scan execution
@@ -93,11 +94,18 @@ cd Qubitsense_PQC_identifier
 
 # Install dependencies
 pip install fastapi uvicorn pyjwt bcrypt cryptography
+
+# Configure the environment
+cp .env.example .env
+# Edit .env and supply your Anthropic API Key for the Floating Web Assistant 
+# CLAUDE_API_KEY=sk-ant-api03...
 ```
 
 ### Running
 
-You need **two processes** running simultaneously:
+### Running
+
+You need **three processes** running simultaneously to leverage the full pipeline:
 
 **1. API Server**
 
@@ -107,13 +115,23 @@ python backend/server.py
 
 The server starts on `http://localhost:8000`. It serves the frontend pages and exposes all REST API endpoints.
 
-**2. Scan Worker**
+**2. Main Scan Worker**
 
 ```bash
 python workers/scan_worker.py
 ```
 
-The worker polls for queued scan jobs, runs the full discovery + analysis pipeline, and stores results.
+The worker polls the database `scans` table to execute the domain discovery, TLS scan, and risk engine pipelines.
+
+**3. Scan Scheduler Worker**
+
+```bash
+python workers/scheduler.py
+```
+
+The scheduler wakes up every 60 seconds, reads the `scheduled_scans` configurations, computes offsets, and triggers background `scan_worker.py` jobs.
+
+> **Tip:** You can use the provided `start.bat` (Windows) or `start.sh` (Linux/Mac) to boot all three processes at once.
 
 ---
 
@@ -127,12 +145,17 @@ The worker polls for queued scan jobs, runs the full discovery + analysis pipeli
 | GET    | `/scan/{id}/tls`                  | TLS scan results                         |
 | GET    | `/scan/{id}/quantum-risk`         | Quantum risk scores                      |
 | GET    | `/scan/{id}/hndl`                 | HNDL detection results                   |
-| GET    | `/scan/{id}/algorithm-analysis`   | Cipher algorithm classification          |
 | GET    | `/scan/{id}/report`               | Full aggregated JSON report              |
 | GET    | `/scan/{id}/logs`                 | Real-time scan execution logs            |
-| POST   | `/scan/upload`                    | Upload QR/barcode image to extract URL   |
-| GET    | `/intelligence/registry`          | Cryptographic algorithm registry         |
-| GET    | `/cache/status/{domain}`          | Check scan cache for a domain            |
+| POST   | `/api/schedules/create`           | Register a new recurring task            |
+| GET    | `/api/schedules/list`             | List currently authenticated user schedules|
+| PATCH  | `/api/schedules/{id}/pause`       | Suspend active recurring schedule        |
+| PATCH  | `/api/schedules/{id}/resume`      | Reactivate a suspended schedule          |
+| PATCH  | `/api/schedules/{id}/update`      | Modify existing schedule configuration   |
+| POST   | `/api/schedules/{id}/run-now`     | Trigger scan out of band instantly       |
+| GET    | `/api/schedules/{id}/history`     | Execution history with risk deltas       |
+| DELETE | `/api/schedules/{id}`             | Unregister an existing schedule target   |
+| GET    | `/api/config/agent-key`           | Fetch secure AI agent key (Authenticated)|
 | POST   | `/auth/register`                  | Register a new user                      |
 | POST   | `/auth/login`                     | Login and receive JWT token              |
 | GET    | `/auth/me`                        | Get current user info                    |
@@ -155,9 +178,11 @@ This validates all 16 system components including authentication, scanning, cach
 ## Tech Stack
 
 - **Backend**: FastAPI, Uvicorn, SQLite
+- **AI Agent**: Google Gemini 2.5 Flash (via secure backend proxy)
 - **Auth**: JWT (PyJWT), bcrypt
 - **Scanning**: Python `ssl`, `socket`, `dns.resolver`, Certificate Transparency logs
-- **Frontend**: HTML, CSS, JavaScript (vanilla)
+- **Frontend**: HTML5, Vanilla CSS (Glassmorphism), Vanilla JS
+- **Discovery**: Custom multi-source engine (CT Logs, 500+ Wordlist, Passive DNS)
 - **Analysis**: Custom quantum risk engine, cipher classification, HNDL detection
 
 ---

@@ -24,24 +24,65 @@ def parse_certificate(der_cert: bytes) -> dict:
     dict
         Keys: ``key_algorithm``, ``key_size``, ``signature_algorithm``,
         ``certificate_expiry``.
+        On error, includes: ``error_category``, ``error_reason``
     """
+    if not der_cert:
+        return {
+            "error_category": "CERT_INVALID",
+            "error_reason": "Certificate data is empty or None",
+            "key_algorithm": "unknown",
+            "key_size": 0,
+            "signature_algorithm": "unknown",
+            "certificate_expiry": "",
+        }
+    
     try:
         return _parse_with_cryptography(der_cert)
     except ImportError:
         return _parse_with_stdlib(der_cert)
-    except Exception:
-        return _parse_with_stdlib(der_cert)
+    except ValueError as e:
+        return {
+            "error_category": "CERT_FORMAT_ERROR",
+            "error_reason": f"Invalid certificate format: {str(e)[:100]}",
+            "key_algorithm": "unknown",
+            "key_size": 0,
+            "signature_algorithm": "unknown",
+            "certificate_expiry": "",
+        }
+    except Exception as e:
+        # Try stdlib fallback for any other error
+        try:
+            return _parse_with_stdlib(der_cert)
+        except Exception as e2:
+            return {
+                "error_category": "CERT_PARSE_ERROR",
+                "error_reason": f"Failed to parse certificate: {str(e2)[:100]}",
+                "key_algorithm": "unknown",
+                "key_size": 0,
+                "signature_algorithm": "unknown",
+                "certificate_expiry": "",
+            }
 
 
 def _parse_with_cryptography(der_cert: bytes) -> dict:
     """Rich parsing using the ``cryptography`` library."""
-    from cryptography import x509
-    from cryptography.hazmat.primitives.asymmetric import (
-        rsa, ec, dsa, ed25519, ed448,
-    )
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives.asymmetric import (
+            rsa, ec, dsa, ed25519, ed448,
+        )
+    except ImportError:
+        raise ImportError("cryptography library not installed")
 
-    cert = x509.load_der_x509_certificate(der_cert)
-    pub_key = cert.public_key()
+    try:
+        cert = x509.load_der_x509_certificate(der_cert)
+    except Exception as e:
+        raise ValueError(f"Failed to load DER certificate: {e}")
+    
+    try:
+        pub_key = cert.public_key()
+    except Exception as e:
+        raise ValueError(f"Failed to extract public key: {e}")
 
     # Determine key algorithm and size
     if isinstance(pub_key, rsa.RSAPublicKey):
@@ -60,14 +101,21 @@ def _parse_with_cryptography(der_cert: bytes) -> dict:
         key_algorithm = "Ed448"
         key_size = 448
     else:
+        # Unknown algorithm - likely PQC
         key_algorithm = type(pub_key).__name__
         key_size = 0
 
     # Signature algorithm
-    sig_algo = cert.signature_algorithm_oid._name if hasattr(cert.signature_algorithm_oid, '_name') else str(cert.signature_algorithm_oid.dotted_string)
+    try:
+        sig_algo = cert.signature_algorithm_oid._name if hasattr(cert.signature_algorithm_oid, '_name') else str(cert.signature_algorithm_oid.dotted_string)
+    except Exception:
+        sig_algo = "unknown"
 
     # Expiry
-    expiry = cert.not_valid_after_utc.isoformat() if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.isoformat()
+    try:
+        expiry = cert.not_valid_after_utc.isoformat() if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.isoformat()
+    except Exception:
+        expiry = ""
 
     return {
         "key_algorithm": key_algorithm,

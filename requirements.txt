@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pyjwt
+bcrypt
+cryptography
+aiodns
+dnspython

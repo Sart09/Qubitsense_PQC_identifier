@@ -133,3 +133,42 @@ class AssetDetailsResponse(BaseModel):
     hndl_level: str | None
     pqc_recommendations: list[str]
 
+
+class ScanFailureItem(BaseModel):
+    """Single scan failure record."""
+    id: int
+    hostname: str
+    failure_category: str
+    failure_reason: str
+    attempt_count: int
+    created_at: str
+
+
+class ScanFailuresResponse(BaseModel):
+    """Response listing failed scan domains for a scan."""
+    scan_id: int
+    total_failures: int
+    failures: list[ScanFailureItem]
+
+
+class DomainScanHistoryItem(BaseModel):
+    """Single scan in a domain's history."""
+    scan_id: int
+    domain: str
+    status: str
+    tls_count: int
+    failure_count: int
+    created_at: str
+
+
+class DomainScanHistoryResponse(BaseModel):
+    """Response listing all scans for a specific domain."""
+    domain: str
+    total_scans: int
+    scans: list[DomainScanHistoryItem]
+
+
+class DomainsListResponse(BaseModel):
+    """Response listing all scanned domains."""
+    total_domains: int
+    domains: list[str]
