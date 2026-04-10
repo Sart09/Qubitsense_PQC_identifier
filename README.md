@@ -101,7 +101,11 @@ pip install fastapi uvicorn pyjwt bcrypt cryptography python-dotenv python-multi
 # Configure the environment
 cp .env.example .env
 # Edit .env and supply your Gemini API Key for the AI Agent (Qubit)
+# THE AGENT WILL NOT OPERATE WITHOUT A VALID KEY IN THE .env FILE
 # GEMINI_API_KEY=AIzaSy...
+
+> [!IMPORTANT]
+> For the AI Assistant (Qubit) to function, you must provide your own Google Gemini API key in the `.env` file. Without this key, the agent will remain offline and unable to trigger platform actions.
 ```
 
 ### Running
