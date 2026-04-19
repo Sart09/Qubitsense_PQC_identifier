@@ -242,6 +242,13 @@ def init_db() -> None:
         except Exception:
             pass  # Column already exists
 
+        # Migrate: add priority column to scans
+        try:
+            conn.execute("ALTER TABLE scans ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;")
+            conn.commit()
+        except Exception:
+            pass  # Already exists
+
         # Migrate existing databases: add source column to scans
         try:
             conn.execute("ALTER TABLE scans ADD COLUMN source TEXT DEFAULT 'manual';")

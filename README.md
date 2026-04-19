@@ -1,79 +1,115 @@
 # Qubitsense — Post-Quantum Cryptography Identifier
 
-A full-stack security platform that scans websites and domains for **post-quantum cryptographic risk**, evaluating TLS configurations, cipher suites, and **Harvest Now, Decrypt Later (HNDL)** exposure.
+A full-stack enterprise security platform that scans domains for **post-quantum cryptographic risk**, evaluating TLS configurations, cipher suites, certificate health, and **Harvest Now, Decrypt Later (HNDL)** exposure across entire subdomain estates.
 
-Built with **FastAPI** (Python) on the backend and a modern HTML/JS frontend.
+Built for **Indian banking infrastructure** — tested on enterprise domains with 200+ subdomains.
 
 ---
 
 ## Features
 
-- **Domain Scanning** — Submit any domain or URL for automated security analysis
-- **AI Assistant "Qubit"** — Integrated floating AI agent (Gemini 2.5 Flash) for chat-based scanning and risk intelligence
-- **Scan Scheduling** — Automated surveillance with recurring daily/weekly/monthly scans and risk delta tracking
-- **Discovery Intelligence** — Massive 500+ prefix brute-force engine for enterprise-grade subdomain mining
-- **TLS Deep Analysis** — Inspect TLS versions, cipher suites, key algorithms, and certificate expiry
-- **Quantum Risk Scoring** — Dynamically calculated risk scores (0–100) based on cryptographic posture
-- **HNDL Detection** — Identify assets vulnerable to "Harvest Now, Decrypt Later" attacks
-- **Algorithm Intelligence** — Classify cipher components (key exchange, signature, encryption, hash) and estimate quantum vulnerability
-- **Scan Caching** — 24-hour result cache with strictly controlled "No-Cache" UI headers
-- **QR/Barcode Upload** — Extract target URLs from uploaded images or PDFs
-- **Export Reports** — Aggregated JSON reports covering all scan dimensions
-- **Real-time Scan Logs** — Live progress tracking during scan execution
+### 🔍 Domain Discovery Engine
+- **Multi-source Subdomain Discovery** — CT logs, AlienVault OTX (with API key support), DNS brute-force (200+ categorized wordlist), and passive DNS record mining
+- **Dual-Stack Resolution** — A + AAAA record resolution catches IPv6-only hosts
+- **CNAME Chain Following** — Discovers CDN-hosted subdomains missed by basic lookups
+- **SOA + SRV Record Mining** — Extracts service endpoints from DNS infrastructure
+- **SPF/DKIM/DMARC Extraction** — Regex-based extraction from TXT records
+- **Ghost Filtering** — Automatically removes subdomains with no DNS A record before scanning
+- **100 Concurrent DNS Workers** — High-throughput brute-force enumeration
+
+### 🔒 TLS & Certificate Analysis
+- **Async Concurrent TLS Scanner** — 50 parallel TLS handshakes with 12s timeout
+- **Full Certificate Inspection** — TLS version, cipher suite, key algorithm, key size, signature algorithm, certificate expiry
+- **Failure Classification** — TCP_TIMEOUT, TCP_REFUSED, TLS_HANDSHAKE_FAIL, CERT_MISMATCH categorized separately
+
+### ⚛️ Quantum Risk Engine
+- **Per-Host Quantum Risk Scores** — 0–100 composite score based on key exchange, encryption, TLS version, key size, and certificate validity
+- **HNDL Detection** — Identifies which subdomains are highest-value harvest targets
+- **Algorithm Intelligence** — Classifies cipher components and maps them to quantum vulnerability estimates
+- **Cryptographic Bill of Materials (CBOM)** — Full inventory of every algorithm in use
+
+### 🤖 AI Assistant "Qubit"
+- **Gemini 2.5 Flash Powered** — Natural language scanning and risk intelligence
+- **Voice-Driven Operation** — Speak a domain name, agent scans it automatically
+- **Context-Aware Analysis** — Agent understands your current scan and answers questions about it
+- **Available on Every Page** — Persistent floating widget across the entire platform
+
+### 📋 Scan Queue Management
+- **Scan Now** — Priority scan that pauses the entire queue and runs immediately
+- **Add to Queue** — Standard FIFO queuing for batch scanning
+- **Stop Running Scans** — Cancel any running, queued, or paused scan from the History panel
+- **Auto-Resume** — Paused jobs automatically resume after a priority scan completes
+
+### 🗓️ Automated Scheduling
+- **Recurring Scans** — Daily, weekly, monthly, or custom interval scheduling per domain
+- **Risk Trend Tracking** — Compares quantum risk scores across scan history
+- **Run-Now Override** — Trigger any scheduled scan instantly out of band
+- **Execution History** — Full run log with risk deltas and failure tracking
+
+### 📊 Dashboard & Reporting
+- **Live Risk Dashboard** — Risk scores, HNDL exposure, cipher breakdowns, network graph
+- **Real-time Scan Progress** — Live terminal log stream with phase-by-phase progress bars
+- **Scan History** — Full timestamped history per domain with TLS counts and failure stats
+- **PDF Export** — One-click compliance-ready report generation
+- **JSON Export** — Full aggregated report for programmatic consumption
+- **WCAG AA Compliant UI** — All text elements meet 4.5:1 contrast ratio minimum
 
 ---
 
 ## Architecture
 
 ```
-├── backend/          # FastAPI server, database, models, job management
-│   ├── server.py     # Main entry-point (FastAPI app + all API routes)
-│   ├── database.py   # SQLite database initialization & connection
-│   ├── models.py     # Pydantic request/response models
-│   ├── job_manager.py
-│   ├── result_manager.py
-│   ├── domain_parser.py
-│   └── upload_parser.py
+├── backend/                    # FastAPI server, database, models
+│   ├── server.py               # Main entry-point + all REST API routes
+│   ├── database.py             # SQLite schema + WAL connection management
+│   ├── models.py               # Pydantic request/response models
+│   ├── job_manager.py          # Scan job creation
+│   ├── result_manager.py       # TLS/HNDL/algorithm result storage
+│   ├── domain_parser.py        # URL normalization
+│   └── upload_parser.py        # QR/barcode document parsing
 │
-├── scanner/          # Network scanning modules
-│   ├── tls_scanner.py
-│   ├── certificate_parser.py
-│   ├── dns_enum.py
-│   ├── domain_discovery.py
-│   └── ct_logs.py
+├── scanner/                    # Network scanning modules
+│   ├── tls_scanner_async_concurrent.py  # Async 50-worker TLS scanner
+│   ├── dns_enum.py             # 200+ wordlist brute-force + CNAME/SRV/SOA
+│   ├── domain_discovery.py     # Multi-source orchestrator (CT + OTX + DNS)
+│   ├── ct_logs.py              # Certificate Transparency log lookup
+│   └── certificate_parser.py  # DER certificate parsing
 │
-├── analysis/         # Risk analysis & classification
-│   ├── quantum_risk_engine.py
-│   ├── algorithm_classifier.py
-│   ├── cipher_parser.py
-│   ├── quantum_estimator.py
-│   ├── service_classifier.py
-│   └── hndl_detector.py
+├── analysis/                   # Risk analysis & classification
+│   ├── quantum_risk_engine.py  # Composite quantum risk scoring
+│   ├── cipher_parser.py        # Cipher suite component extraction
+│   ├── algorithm_classifier.py # Cryptographic family classification
+│   ├── quantum_estimator.py    # Per-algorithm quantum risk estimates
+│   ├── service_classifier.py   # Subdomain service type detection
+│   └── hndl_detector.py        # HNDL risk multiplier calculation
 │
-├── intelligence/     # Threat intelligence & PQC registry
-│   ├── pqc_registry.py
-│   ├── attack_registry.py
-│   ├── registry_updater.py
-│   └── threat_feed.py
+├── intelligence/               # Threat intelligence & PQC registry
+│   ├── registry_updater.py     # Algorithm registry seeding & lookup
+│   └── threat_feed.py          # Live threat intelligence updates
 │
-├── auth/             # Authentication system
-│   ├── auth_routes.py
-│   ├── jwt_handler.py
-│   └── password_utils.py
+├── auth/                       # Authentication system
+│   ├── auth_routes.py          # Register / Login / Me endpoints
+│   ├── jwt_handler.py          # JWT token generation & validation
+│   └── password_utils.py       # bcrypt hashing
 │
-├── workers/          # Background scan worker
-│   ├── scan_worker.py
-│   └── job_fetcher.py
+├── workers/                    # Background processing
+│   ├── scan_worker.py          # Main scan pipeline (Discovery → TLS → Storage)
+│   ├── job_fetcher.py          # Priority-aware job queue (FIFO + priority override)
+│   └── scheduler.py            # Recurring scan scheduler
 │
-├── frontend/         # Web UI
-│   ├── index.html         # Scanner landing page
-│   ├── login.html         # Login / Register
-│   ├── dashboard.html     # Scan results dashboard
-│   ├── scan_progress.html # Real-time scan progress
-│   ├── user_dashboard.html
-│   └── components/        # Shared JS/CSS components
+├── frontend/                   # Web UI
+│   ├── index.html              # Scanner landing — Scan Now + Add to Queue
+│   ├── login.html              # Login / Register
+│   ├── dashboard.html          # Full scan results dashboard
+│   ├── scan_progress.html      # Real-time progress tracker
+│   ├── user_dashboard.html     # Per-user scan history + stop controls
+│   ├── schedules.html          # Schedule management UI
+│   ├── css/ai-agent.css        # AI agent widget styles (WCAG AA)
+│   └── components/             # Shared theme, charts, graph viewer
 │
-└── test_system.py    # End-to-end system validation script
+├── start.bat                   # Windows one-command stack launcher
+├── start.sh                    # Linux/Mac one-command stack launcher
+└── test_system.py              # End-to-end system validation
 ```
 
 ---
@@ -92,105 +128,117 @@ Built with **FastAPI** (Python) on the backend and a modern HTML/JS frontend.
 git clone https://github.com/Sart09/Qubitsense_PQC_identifier.git
 cd Qubitsense_PQC_identifier
 
-# Install dependencies 
-# Core: fastapi, uvicorn, pyjwt, bcrypt, cryptography, python-dotenv, python-multipart
-# Scanning: aiodns, pycares, dnspython
-# Document Analysis: Pillow, pyzbar, pymupdf
-pip install fastapi uvicorn pyjwt bcrypt cryptography python-dotenv python-multipart aiodns pycares dnspython Pillow pyzbar pymupdf
+# Install dependencies
+pip install fastapi uvicorn pyjwt bcrypt cryptography python-dotenv \
+            python-multipart aiodns pycares dnspython Pillow pyzbar \
+            pymupdf pyOpenSSL requests
+```
 
-# Configure the environment
+### Configuration
+
+```bash
+# Configure environment
 cp .env.example .env
-# Edit .env and supply your Gemini API Key for the AI Agent (Qubit)
-# THE AGENT WILL NOT OPERATE WITHOUT A VALID KEY IN THE .env FILE
-# GEMINI_API_KEY=AIzaSy...
+```
+
+Edit `.env` and set your Gemini API key:
+```env
+GEMINI_API_KEY=AIzaSy...your_key_here
+JWT_SECRET=your_secret_here
+```
 
 > [!IMPORTANT]
-> For the AI Assistant (Qubit) to function, you must provide your own Google Gemini API key in the `.env` file. Without this key, the agent will remain offline and unable to trigger platform actions.
-```
+> The AI Assistant (Qubit) requires a valid Google Gemini API key in `.env`.
+> Without it, the agent displays an error and cannot trigger scans or analysis.
+> Get a free key at https://aistudio.google.com/apikey
 
 ### Running
-
-### Running
-
-You need **three processes** running simultaneously to leverage the full pipeline:
-
-**1. API Server**
 
 ```bash
+# Windows — starts all 3 processes at once
+.\start.bat
+
+# Linux/Mac
+./start.sh
+```
+
+Or run each process manually:
+
+```bash
+# 1. API Server (http://localhost:8000)
 python backend/server.py
-```
 
-The server starts on `http://localhost:8000`. It serves the frontend pages and exposes all REST API endpoints.
-
-**2. Main Scan Worker**
-
-```bash
+# 2. Scan Worker
 python workers/scan_worker.py
-```
 
-The worker polls the database `scans` table to execute the domain discovery, TLS scan, and risk engine pipelines.
-
-**3. Scan Scheduler Worker**
-
-```bash
+# 3. Scheduler
 python workers/scheduler.py
 ```
 
-The scheduler wakes up every 60 seconds, reads the `scheduled_scans` configurations, computes offsets, and triggers background `scan_worker.py` jobs.
-
-> **Tip:** You can use the provided `start.bat` (Windows) or `start.sh` (Linux/Mac) to boot all three processes at once.
-
 ---
 
-## API Endpoints
+## API Reference
 
-| Method | Endpoint                          | Description                              |
-|--------|-----------------------------------|------------------------------------------|
-| POST   | `/scan`                           | Submit a domain for scanning             |
-| GET    | `/scan/{id}`                      | Poll scan status                         |
-| GET    | `/scan/{id}/assets`               | Discovered subdomains/assets             |
-| GET    | `/scan/{id}/tls`                  | TLS scan results                         |
-| GET    | `/scan/{id}/quantum-risk`         | Quantum risk scores                      |
-| GET    | `/scan/{id}/hndl`                 | HNDL detection results                   |
-| GET    | `/scan/{id}/report`               | Full aggregated JSON report              |
-| GET    | `/scan/{id}/logs`                 | Real-time scan execution logs            |
-| POST   | `/api/schedules/create`           | Register a new recurring task            |
-| GET    | `/api/schedules/list`             | List currently authenticated user schedules|
-| PATCH  | `/api/schedules/{id}/pause`       | Suspend active recurring schedule        |
-| PATCH  | `/api/schedules/{id}/resume`      | Reactivate a suspended schedule          |
-| PATCH  | `/api/schedules/{id}/update`      | Modify existing schedule configuration   |
-| POST   | `/api/schedules/{id}/run-now`     | Trigger scan out of band instantly       |
-| GET    | `/api/schedules/{id}/history`     | Execution history with risk deltas       |
-| DELETE | `/api/schedules/{id}`             | Unregister an existing schedule target   |
-| GET    | `/api/config/agent-key`           | Fetch secure AI agent key (Authenticated)|
-| POST   | `/auth/register`                  | Register a new user                      |
-| POST   | `/auth/login`                     | Login and receive JWT token              |
-| GET    | `/auth/me`                        | Get current user info                    |
-| GET    | `/user/scans`                     | List authenticated user's scan history   |
+### Scan Management
 
----
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/scan` | Submit domain to queue |
+| `POST` | `/scan/priority` | **Priority scan** — pauses queue, runs immediately |
+| `POST` | `/scan/{id}/stop` | **Stop** a running/queued scan |
+| `GET`  | `/scan/{id}` | Poll scan status |
+| `GET`  | `/scan/{id}/logs` | Live execution log stream |
+| `GET`  | `/scan/{id}/assets` | Discovered subdomains |
+| `GET`  | `/scan/{id}/tls` | TLS scan results |
+| `GET`  | `/scan/{id}/quantum-risk` | Quantum risk scores |
+| `GET`  | `/scan/{id}/hndl` | HNDL detection results |
+| `GET`  | `/scan/{id}/algorithm-analysis` | Cipher & algorithm breakdown |
+| `GET`  | `/scan/{id}/failures` | Categorized scan failures |
+| `GET`  | `/scan/{id}/report` | Full aggregated JSON report |
+| `POST` | `/scan/upload` | Upload QR/barcode document |
 
-## Testing
+### Domain History
 
-Run the full end-to-end validation suite (requires both server and worker to be running):
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/domains` | List all scanned domains |
+| `GET`  | `/domain/{domain}/scans` | Scan history for a domain |
+| `GET`  | `/asset/{id}` | Per-asset drill-down details |
 
-```bash
-python test_system.py
-```
+### Scheduling
 
-This validates all 16 system components including authentication, scanning, caching, risk analysis, and error handling.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/schedules/create` | Create recurring scan schedule |
+| `GET`  | `/api/schedules/list` | List user's schedules |
+| `PATCH`| `/api/schedules/{id}/pause` | Pause a schedule |
+| `PATCH`| `/api/schedules/{id}/resume` | Resume a schedule |
+| `POST` | `/api/schedules/{id}/run-now` | Trigger immediate scan |
+| `GET`  | `/api/schedules/{id}/history` | Run history with risk deltas |
+| `DELETE`| `/api/schedules/{id}` | Delete a schedule |
+
+### Auth
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/auth/register` | Register new user |
+| `POST` | `/auth/login` | Login, returns JWT |
+| `GET`  | `/auth/me` | Current user info |
+| `GET`  | `/user/scans` | User's scan history |
 
 ---
 
 ## Tech Stack
 
-- **Backend**: FastAPI, Uvicorn, SQLite
-- **AI Agent**: Google Gemini 2.5 Flash (via secure backend proxy)
-- **Auth**: JWT (PyJWT), bcrypt
-- **Scanning**: Python `ssl`, `socket`, `dns.resolver`, Certificate Transparency logs
-- **Frontend**: HTML5, Vanilla CSS (Glassmorphism), Vanilla JS
-- **Discovery**: Custom multi-source engine (CT Logs, 500+ Wordlist, Passive DNS)
-- **Analysis**: Custom quantum risk engine, cipher classification, HNDL detection
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | FastAPI, Uvicorn, SQLite (WAL mode) |
+| **AI Agent** | Google Gemini 2.5 Flash (secure backend proxy) |
+| **Auth** | JWT (PyJWT), bcrypt |
+| **TLS Scanning** | Python `ssl`, `socket`, `asyncio`, `pyOpenSSL` |
+| **DNS Discovery** | `dnspython`, CT logs API, AlienVault OTX |
+| **Frontend** | HTML5, Tailwind CSS, Vanilla JS, Chart.js, Cytoscape.js |
+| **Risk Engine** | Custom quantum scoring, HNDL multiplier, CBOM analysis |
 
 ---
 

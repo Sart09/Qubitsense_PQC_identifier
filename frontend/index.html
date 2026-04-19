@@ -183,16 +183,27 @@
       <form id="scanForm" autocomplete="off">
         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2" for="targetInput">Target
           Domain or URL</label>
-        <div class="flex gap-3 mb-6">
+        <div class="flex gap-3 mb-4">
           <input id="targetInput" type="text" placeholder="e.g. login.bank.com or https://example.com" class="flex-1 px-4 py-3 rounded-xl bg-slate-800/60 border border-indigo-500/20
                         text-[#1e293b] placeholder-slate-500 outline-none
                         focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition" />
-          <button id="scanBtn" type="submit" class="px-6 py-3 rounded-xl font-semibold text-white
-                         bg-gradient-to-r from-indigo-600 to-indigo-500
-                         shadow-lg shadow-indigo-500/30 hover:-translate-y-0.5
-                         hover:shadow-indigo-500/50 active:translate-y-0 transition
-                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
-            Start Scan
+        </div>
+        <div class="flex gap-3 mb-6">
+          <button id="scanNowBtn" type="submit" class="flex-1 px-6 py-3 rounded-xl font-semibold text-[#fff]
+                         bg-gradient-to-r from-[#a80024] to-[#d32f2f]
+                         shadow-lg shadow-red-500/30 hover:-translate-y-0.5
+                         hover:shadow-red-500/50 active:translate-y-0 transition
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+                         flex items-center justify-center gap-2">
+            ⚡ Scan Now
+          </button>
+          <button id="queueBtn" type="button" class="flex-1 px-6 py-3 rounded-xl font-semibold
+                         text-amber-500 border-2 border-amber-500/40
+                         hover:bg-amber-500/10 hover:-translate-y-0.5
+                         active:translate-y-0 transition
+                         disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+                         flex items-center justify-center gap-2">
+            📋 Add to Queue
           </button>
         </div>
       </form>
@@ -232,16 +243,20 @@
     /* ── Elements ──────────────────────────────────────── */
     const form = document.getElementById('scanForm');
     const input = document.getElementById('targetInput');
-    const btn = document.getElementById('scanBtn');
+    const scanNowBtn = document.getElementById('scanNowBtn');
+    const queueBtn = document.getElementById('queueBtn');
     const resultEl = document.getElementById('result');
 
     const uploadInput = document.getElementById('fileUpload');
     const uploadLoader = document.getElementById('uploadLoader');
 
     /* ── Submit a domain to the API ───────────────────── */
-    async function submitScan(target) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-sm"></span>Submitting…';
+    async function submitScan(target, endpoint = '/scan') {
+      scanNowBtn.disabled = true;
+      queueBtn.disabled = true;
+      const activeBtn = (endpoint === '/scan/priority') ? scanNowBtn : queueBtn;
+      const origHTML = activeBtn.innerHTML;
+      activeBtn.innerHTML = '<span class="spinner-sm"></span>Submitting…';
       resultEl.className = 'mt-6 hidden';
 
       try {
@@ -249,7 +264,7 @@
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const res = await fetch('/scan', {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: headers,
           body: JSON.stringify({ target }),
@@ -261,23 +276,27 @@
         }
 
         const data = await res.json();
-
-        // Always vector directly into the progress tracker for visual confidence, 
-        // even if the job is cached natively by backend.
         window.location.href = `/scan-progress/${data.scan_id}`;
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
         resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-red-500/10 border border-red-500/30 text-red-400';
-        btn.disabled = false;
-        btn.textContent = 'Start Scan';
+        scanNowBtn.disabled = false;
+        queueBtn.disabled = false;
+        activeBtn.innerHTML = origHTML;
       }
     }
 
-    /* ── Form submit ──────────────────────────────────── */
+    /* ── Form submit (Scan Now = priority) ────────────── */
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const target = input.value.trim();
-      if (target) submitScan(target);
+      if (target) submitScan(target, '/scan/priority');
+    });
+
+    /* ── Add to Queue button ──────────────────────────── */
+    queueBtn.addEventListener('click', () => {
+      const target = input.value.trim();
+      if (target) submitScan(target, '/scan');
     });
 
     /* ── Document Upload Scanner ──────────────────────── */
@@ -321,7 +340,7 @@
       if (urlParams.get('autostart') === 'true' && urlParams.get('domain')) {
         const dom = urlParams.get('domain');
         input.value = dom;
-        setTimeout(() => submitScan(dom), 400); // Slight delay for smooth UI paint
+        setTimeout(() => submitScan(dom, '/scan/priority'), 400); // Slight delay for smooth UI paint
       }
 
       const email = localStorage.getItem('email');

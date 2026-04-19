@@ -452,8 +452,14 @@
                                         </p>
                                         <p class="text-xs text-gray-500 mt-1">Scan ID: #${scan.scan_id}</p>
                                     </div>
-                                    <div class="flex items-center gap-4">
+                                    <div class="flex items-center gap-3">
                                         <span class="badge badge-${scan.status}" style="padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;">${scan.status.toUpperCase()}</span>
+                                        ${(scan.status === 'running' || scan.status === 'queued' || scan.status === 'paused') ? `
+                                            <button onclick="event.stopPropagation(); stopScan(${scan.scan_id}, '${domain}')"
+                                                class="px-3 py-1 rounded-md text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition shadow-sm">
+                                                ■ Stop
+                                            </button>
+                                        ` : ''}
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-6 mt-3 text-sm text-gray-600">
@@ -465,6 +471,22 @@
             }).join('')}
                 </div>
             `;
+        }
+
+        async function stopScan(scanId, domain) {
+            if (!confirm('Stop this scan? It will be marked as cancelled.')) return;
+            try {
+                const res = await fetch(`/scan/${scanId}/stop`, { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.detail || 'Failed to stop scan');
+                    return;
+                }
+                // Refresh the history list
+                showScanHistory(domain);
+            } catch (err) {
+                alert('Error stopping scan: ' + err.message);
+            }
         }
 
         function filterScansByDate() {
@@ -500,7 +522,7 @@
                 console.log('[Domains] Loading all scanned domains...');
                 const res = await fetch('/domains');
                 if (!res.ok) {
-                    throw new Error(`API Error: ${res.status}`);
+                    throw new Error(`API Error: ${res.status} `);
                 }
 
                 const data = await res.json();
@@ -517,9 +539,9 @@
             } catch (err) {
                 console.error('[Domains] Failed to load domains:', err);
                 document.getElementById('domainList').innerHTML = `
-                    <div class="col-span-full text-center text-red-600 py-12">
+                    < div class="col-span-full text-center text-red-600 py-12" >
                         Error loading domains: ${err.message}
-                    </div>
+                    </div >
                 `;
             }
         }

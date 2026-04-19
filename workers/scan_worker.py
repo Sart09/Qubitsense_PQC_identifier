@@ -31,11 +31,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "analysis"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "intelligence"))
 
-from job_fetcher import get_next_job, update_job_status
+from job_fetcher import get_next_job, update_job_status, resume_paused_jobs
 from result_manager import store_result, store_tls_result, store_hndl_result, store_algorithm_analysis, store_scan_failure
 from database import init_db, get_connection
 from domain_discovery import discover_assets, store_asset, resolve_ip
-from tls_scanner_async_concurrent import AsyncTLSScanner, filter_live_subdomains
+from tls_scanner_async_concurrent import AsyncTLSScanner
 from certificate_parser import parse_certificate
 from cipher_parser import parse_cipher_suite
 from algorithm_classifier import classify_family
@@ -141,19 +141,7 @@ def run_scan(job: dict) -> None:
     total_discovered = len(assets)
     log_progress(scan_id, f"[DISCOVERY ✓] Discovered {total_discovered} unique subdomains from CT logs, DNS brute force, and passive DNS")
 
-    # --- Step 1.5: Ghost filter (FIX 2) ----------------------------------
-    # If discover_assets didn't filter ghosts (async context issue), do it here
-    log_progress(scan_id, f"[GHOST FILTER] Validating DNS for {total_discovered} subdomains...")
-    try:
-        live_assets, ghost_count = asyncio.run(filter_live_subdomains(assets))
-        if ghost_count > 0:
-            log_progress(scan_id, f"[GHOST FILTER ✓] Filtered {ghost_count} ghost subdomains (no DNS A record) — NOT counted as failures")
-        assets = live_assets
-        total_live = len(assets)
-        log_progress(scan_id, f"[GHOST FILTER ✓] {total_live} live subdomains ready for TLS scanning")
-    except Exception as e:
-        log_progress(scan_id, f"[GHOST FILTER] Warning: Ghost filter failed ({e}), scanning all discovered hosts")
-        total_live = total_discovered
+    total_live = total_discovered  # domain_discovery.py already ghost-filters
 
     # --- Step 2: Resolve IPs concurrently and store ----------------------
     ip_to_hostnames = {}
@@ -281,7 +269,7 @@ def run_scan(job: dict) -> None:
         # Log progress every 5 or at end
         completed = tls_counter["succeeded"] + tls_counter["failed"]
         if completed % 5 == 0 or completed == total_endpoints:
-            log_progress(scan_id, f"[TLS ANALYSIS] Processed {completed}/{total_endpoints} endpoints (✓ {tls_counter['succeeded']} | ✗ {tls_counter['failed']})")
+            log_progress(scan_id, f"[TLS ANALYSIS] Scanned {completed}/{total_endpoints} endpoints (✓ {tls_counter['succeeded']} | ✗ {tls_counter['failed']})")
 
     log_progress(scan_id, f"[TLS ANALYSIS ✓] Completed async concurrent analysis (✓ {tls_counter['succeeded']} succeeded | ✗ {tls_counter['failed']} failed)")
 
@@ -432,11 +420,23 @@ def main() -> None:
 
                 update_schedule_after_scan_from_db(scan_id)
                 print(f"[worker] Job {scan_id} -> completed\n", flush=True)
+
+                # Resume paused jobs if this was a priority scan
+                if job.get("priority", 0) == 1:
+                    resumed = resume_paused_jobs()
+                    if resumed:
+                        print(f"[worker] Resumed {resumed} paused queued jobs", flush=True)
             except Exception as exc:
                 print(f"Updating job status -> failed ({exc})", flush=True)
                 update_job_status(scan_id, "failed")
                 update_schedule_after_scan_from_db(scan_id, str(exc))
                 print(f"[worker] Job {scan_id} -> failed: {exc}\n", flush=True)
+
+                # Resume paused jobs even on failure
+                if job.get("priority", 0) == 1:
+                    resumed = resume_paused_jobs()
+                    if resumed:
+                        print(f"[worker] Resumed {resumed} paused queued jobs", flush=True)
         else:
             time.sleep(POLL_INTERVAL)
 

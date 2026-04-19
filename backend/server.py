@@ -193,6 +193,67 @@ async def start_scan(
     return ScanResponse(scan_id=scan_id, status="queued")
 
 
+@app.post("/scan/priority", response_model=ScanResponse)
+async def start_priority_scan(
+    request: ScanRequest,
+    authorization: str = Header(None),
+):
+    """
+    Submit a PRIORITY scan that jumps the queue.
+    Pauses all currently queued jobs, runs this scan first,
+    then resumes paused jobs automatically after completion.
+    """
+    try:
+        domain_info = parse_domain(request.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    domain = domain_info.host
+
+    # Identify user (optional)
+    user_id = None
+    if authorization and authorization.startswith("Bearer "):
+        from jwt_handler import verify_token
+        payload = verify_token(authorization.replace("Bearer ", ""))
+        if payload:
+            user_id = payload["sub"]
+
+    # Pause all currently queued jobs (set status = 'paused')
+    conn = get_connection()
+    try:
+        paused_count = conn.execute(
+            "UPDATE scans SET status = 'paused' WHERE status = 'queued';"
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[scan/priority] Paused {paused_count} queued jobs")
+
+    # Create a priority scan job (priority=1 ensures it's picked first)
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO scans (target_domain, parent_domain, status, priority, created_at)
+            VALUES (?, ?, 'queued', 1, ?);
+            """,
+            (domain, domain_info.parent_domain, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        scan_id = cursor.lastrowid
+    finally:
+        conn.close()
+
+    print(f"[scan/priority] Created priority scan job {scan_id} for {domain}")
+
+    # Link to user
+    if user_id:
+        _link_scan_to_user(user_id, scan_id, domain, "queued")
+
+    return ScanResponse(scan_id=scan_id, status="queued")
+
+
 def _link_scan_to_user(user_id: int, scan_id: int, domain: str, status: str):
     """Insert a user_scans record linking a scan to a user."""
     conn = get_connection()
@@ -208,6 +269,38 @@ def _link_scan_to_user(user_id: int, scan_id: int, domain: str, status: str):
 
 
 
+
+
+@app.post("/scan/{scan_id}/stop")
+async def stop_scan(scan_id: int):
+    """
+    Stop a running, queued, or paused scan by setting its status to 'cancelled'.
+    Also resumes any paused jobs so they can proceed.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, status FROM scans WHERE id = ?;", (scan_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Scan not found")
+
+        if row["status"] in ("completed", "failed", "cancelled"):
+            raise HTTPException(status_code=400, detail=f"Scan already {row['status']}")
+
+        conn.execute(
+            "UPDATE scans SET status = 'cancelled' WHERE id = ?;", (scan_id,)
+        )
+        # Resume any jobs that were paused for a priority scan
+        resumed = conn.execute(
+            "UPDATE scans SET status = 'queued' WHERE status = 'paused';"
+        ).rowcount
+        conn.commit()
+        print(f"[scan/stop] Cancelled scan {scan_id}, resumed {resumed} paused jobs")
+    finally:
+        conn.close()
+
+    return JSONResponse({"scan_id": scan_id, "status": "cancelled", "resumed_jobs": resumed})
 
 
 @app.get("/scan/{scan_id}", response_model=ScanStatusResponse)
