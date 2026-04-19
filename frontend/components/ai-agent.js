@@ -73,6 +73,261 @@ When a user asks what to DO about a risk, give specific, actionable steps
 Never make up scan results — if you don't have the data, say so
 Keep responses under 150 words unless the user asks for a detailed explanation`;
 
+const QUBIT_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 56 56" width="100%" height="100%">
+  <!-- Hair -->
+  <path d="M18 18 Q18 10 28 10 Q38 10 38 18 Q35 12 28 13 Q21 12 18 18Z" 
+        fill="#1e293b"/>
+  <!-- Head -->
+  <circle cx="28" cy="21" r="10" fill="#fbbf24"/>
+  <!-- Eyes -->
+  <circle cx="24.5" cy="20" r="1.6" fill="#1e293b"/>
+  <circle cx="31.5" cy="20" r="1.6" fill="#1e293b"/>
+  <!-- Eye shine -->
+  <circle cx="25.2" cy="19.3" r="0.5" fill="white"/>
+  <circle cx="32.2" cy="19.3" r="0.5" fill="white"/>
+  <!-- Smile -->
+  <path d="M24 24 Q28 28 32 24" stroke="#1e293b" stroke-width="1.4" 
+        fill="none" stroke-linecap="round"/>
+  <!-- Body -->
+  <ellipse cx="28" cy="38" rx="11" ry="9" fill="#4f46e5"/>
+  <!-- Cape back (drawn before body) -->
+  <path d="M17 35 Q11 47 20 51 Q28 45 36 51 Q45 47 39 35 Q34 41 28 41 
+           Q22 41 17 35Z" fill="#ef4444"/>
+  <!-- Cape collar -->
+  <path d="M19 33 Q28 38 37 33" stroke="#dc2626" stroke-width="2.5" 
+        fill="none" stroke-linecap="round"/>
+  <!-- Star badge -->
+  <polygon points="28,31 29.5,35 33.5,35 30.5,37.5 31.5,41 28,39 
+                   24.5,41 25.5,37.5 22.5,35 26.5,35" fill="#fbbf24"/>
+</svg>`;
+
+class TranscriptProcessor {
+
+    constructor() {
+        // ── Punctuation & symbol replacements ──────────────────────────
+        // Order matters — longer phrases must come before shorter ones
+        this.punctuationMap = [
+
+            // Domain-critical symbols — highest priority
+            { pattern: /\b(dot|period|full stop|point)\b/gi, replacement: '.' },
+            { pattern: /\b(dash|hyphen|minus)\b/gi, replacement: '-' },
+            { pattern: /\b(underscore|under score|under-score)\b/gi, replacement: '_' },
+            { pattern: /\b(at sign|at the rate|at)\b/gi, replacement: '@' },
+            { pattern: /\b(slash|forward slash)\b/gi, replacement: '/' },
+            { pattern: /\b(colon)\b/gi, replacement: ':' },
+            { pattern: /\b(hash|hashtag|pound)\b/gi, replacement: '#' },
+            { pattern: /\b(question mark)\b/gi, replacement: '?' },
+            { pattern: /\b(equals|equal sign)\b/gi, replacement: '=' },
+            { pattern: /\b(ampersand|and sign)\b/gi, replacement: '&' },
+            { pattern: /\b(percent|percent sign)\b/gi, replacement: '%' },
+            { pattern: /\b(tilde)\b/gi, replacement: '~' },
+            { pattern: /\b(plus)\b/gi, replacement: '+' },
+
+            // Common domain TLDs spoken as words — convert to lowercase
+            // These run AFTER dot replacement so "dot com" → ".com" first
+            // then these clean up any remaining spoken TLDs without dot
+            { pattern: /\bwww\s+/gi, replacement: 'www.' },
+
+            // Number words → digits (useful for ports, IPs)
+            { pattern: /\bzero\b/gi, replacement: '0' },
+            { pattern: /\bone\b/gi, replacement: '1' },
+            { pattern: /\btwo\b/gi, replacement: '2' },
+            { pattern: /\bthree\b/gi, replacement: '3' },
+            { pattern: /\bfour\b/gi, replacement: '4' },
+            { pattern: /\bfive\b/gi, replacement: '5' },
+            { pattern: /\bsix\b/gi, replacement: '6' },
+            { pattern: /\bseven\b/gi, replacement: '7' },
+            { pattern: /\beight\b/gi, replacement: '8' },
+            { pattern: /\bnine\b/gi, replacement: '9' },
+        ];
+
+        // ── Domain context patterns ────────────────────────────────────
+        // Detects when the user is likely speaking a domain name
+        // so aggressive symbol replacement can be applied
+        this.domainTriggerPhrases = [
+            /\bscan\b/i,
+            /\bcheck\b/i,
+            /\banalyse?\b/i,
+            /\bschedule\b/i,
+            /\badd\b/i,
+            /\bdomain\b/i,
+            /\bwebsite\b/i,
+            /\bsite\b/i,
+            /\burl\b/i,
+        ];
+
+        // ── Known TLD list for smart dot insertion ─────────────────────
+        // If speech recognizer outputs "examplecom" (merged, no dot),
+        // try to split it using known TLDs
+        this.knownTLDs = [
+            'com', 'org', 'net', 'edu', 'gov', 'mil', 'int',
+            'io', 'co', 'ai', 'app', 'dev', 'tech', 'cloud',
+            'bank', 'finance', 'security', 'crypto',
+            'in', 'uk', 'us', 'au', 'de', 'fr', 'jp', 'cn',
+            'info', 'biz', 'name', 'pro', 'aero', 'coop', 'museum',
+            'store', 'shop', 'online', 'site', 'web', 'media',
+        ];
+    }
+
+    // ── Main entry point — call this on every transcript ──────────────
+    process(rawTranscript, isFinal = false) {
+        if (!rawTranscript || !rawTranscript.trim()) return rawTranscript;
+
+        let text = rawTranscript.trim();
+
+        // Step 1: Normalize whitespace
+        text = text.replace(/\s+/g, ' ');
+
+        // Step 2: Fix common speech-to-text domain mishearings BEFORE aggressive string substitutions destroy context
+        text = this.fixCommonMishearings(text);
+
+        // Step 3: Apply all punctuation/symbol replacements
+        text = this.applyPunctuationMap(text);
+
+        // Step 4: Clean up spaces around inserted symbols
+        text = this.cleanSymbolSpacing(text);
+
+        // Step 5: Smart domain reconstruction
+        // Only on final result — interim would flicker too much
+        if (isFinal) {
+            text = this.reconstructDomains(text);
+        }
+
+        // Step 6: Lowercase domain portions only
+        text = this.lowercaseDomains(text);
+
+        return text;
+    }
+
+    // ── Step 2: Apply punctuation map in order ────────────────────────
+    applyPunctuationMap(text) {
+        for (const { pattern, replacement } of this.punctuationMap) {
+            text = text.replace(pattern, replacement);
+        }
+        return text;
+    }
+
+    // ── Step 3: Clean spaces around symbols ───────────────────────────
+    // "example . com" → "example.com"
+    // "example - corp . com" → "example-corp.com"
+    cleanSymbolSpacing(text) {
+        // Remove spaces immediately before and after domain symbols
+        text = text.replace(/\s*\.\s*/g, '.');
+        text = text.replace(/\s*-\s*/g, '-');
+        text = text.replace(/\s*_\s*/g, '_');
+        text = text.replace(/\s*@\s*/g, '@');
+        text = text.replace(/\s*\/\s*/g, '/');
+        text = text.replace(/\s*:\s*/g, ':');
+
+        // BUT restore space after sentence-ending dots (not domain dots)
+        // A sentence dot is followed by a capital letter or end of string
+        // e.g. "scan example.com. Now show results" — the middle dot is sentence end
+        text = text.replace(/\.(?=[A-Z])/g, '. ');
+
+        return text;
+    }
+
+    // ── Step 4: Reconstruct domains where dot was dropped ─────────────
+    // Handles: "examplecom" → "example.com"
+    //          "examplecoin" → leave alone (not a TLD context)
+    reconstructDomains(text) {
+        const words = text.split(' ');
+        const reconstructed = words.map(word => {
+            // Skip words that already contain a dot (already processed)
+            if (word.includes('.')) return word;
+
+            // EXCLUSIONS: Prevent reconstructing common English words that happen to end in TLD letters
+            // For example: "domain" -> "doma.in", "coin" -> "co.in", "admin" -> "adm.in"
+            const englishExclusions = [
+                'domain', 'main', 'coin', 'join', 'brain', 'train', 'pain', 'rain',
+                'gain', 'admin', 'certain', 'curtain', 'captain', 'mountain',
+                'remain', 'explain', 'maintain', 'contain'
+            ];
+            if (englishExclusions.includes(word.toLowerCase())) return word;
+
+            // Try to find a known TLD suffix in this word
+            for (const tld of this.knownTLDs) {
+                // Match word ending in TLD (case insensitive)
+                const tldRegex = new RegExp(`^(.+?)(${tld})$`, 'i');
+                const match = word.match(tldRegex);
+                if (match && match[1].length >= 2) {
+                    // Candidate: "examplecom" → "example" + "com"
+                    // Only reconstruct if the prefix looks domain-like
+                    // (alphanumeric, at least 2 chars)
+                    if (/^[a-z0-9][a-z0-9-]+$/i.test(match[1])) {
+                        return `${match[1]}.${match[2].toLowerCase()}`;
+                    }
+                }
+            }
+            return word;
+        });
+        return reconstructed.join(' ');
+    }
+
+    // ── Step 5: Fix common speech-to-text mishearings ─────────────────
+    fixCommonMishearings(text) {
+        const mishearings = [
+            // "double u double u double u" → "www"
+            { pattern: /\bdouble\s*u\s*double\s*u\s*double\s*u\b/gi, replacement: 'www' },
+            { pattern: /\bdouble you\s*double you\s*double you\b/gi, replacement: 'www' },
+            { pattern: /\bw w w\b/gi, replacement: 'www' },
+
+            // HTTP/HTTPS spoken versions
+            { pattern: /\bhttp\s*colon\s*\/+/gi, replacement: 'http://' },
+            { pattern: /\bhttps\s*colon\s*\/+/gi, replacement: 'https://' },
+            { pattern: /\bh\s*t\s*t\s*p\s*s?\b/gi, replacement: (m) => m.replace(/\s/g, '').toLowerCase() },
+
+            // Common TLD mishearings
+            { pattern: /\bdot\s*com\b/gi, replacement: '.com' },
+            { pattern: /\bdot\s*net\b/gi, replacement: '.net' },
+            { pattern: /\bdot\s*org\b/gi, replacement: '.org' },
+            { pattern: /\bdot\s*i\s*o\b/gi, replacement: '.io' },
+            { pattern: /\bdot\s*in\b/gi, replacement: '.in' },
+            { pattern: /\bdot\s*co\b/gi, replacement: '.co' },
+            { pattern: /\bdot\s*ai\b/gi, replacement: '.ai' },
+            { pattern: /\bdot\s*gov\b/gi, replacement: '.gov' },
+            { pattern: /\bdot\s*edu\b/gi, replacement: '.edu' },
+            { pattern: /\bdot\s*bank\b/gi, replacement: '.bank' },
+
+            // Country code TLDs with "dot"
+            { pattern: /\bdot\s*co\s*dot\s*in\b/gi, replacement: '.co.in' },
+            { pattern: /\bdot\s*co\s*dot\s*uk\b/gi, replacement: '.co.uk' },
+            { pattern: /\bdot\s*com\s*dot\s*au\b/gi, replacement: '.com.au' },
+
+            // "bank dot in" → ".bank.in" (Indian banking domains)
+            { pattern: /\bbank\s+dot\s+in\b/gi, replacement: '.bank.in' },
+
+            // Web Speech API autocorrect failsafes (STT aggressively swaps bank.in to co.in)
+            { pattern: /\bpnb\s*(?:\.|\s*dot\s*|\s+)co\s*(?:\.|\s*dot\s*|\s+)in\b/gi, replacement: 'pnb.bank.in' },
+        ];
+
+        for (const { pattern, replacement } of mishearings) {
+            text = text.replace(pattern, replacement);
+        }
+        return text;
+    }
+
+    // ── Step 6: Lowercase domain portions ─────────────────────────────
+    // Find anything that looks like a domain and lowercase it
+    // Preserve case of surrounding natural language
+    lowercaseDomains(text) {
+        // Match patterns like word.word, word.word.word etc.
+        return text.replace(
+            /\b([a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z]{2,})+)\b/g,
+            (match) => match.toLowerCase()
+        );
+    }
+
+    // ── Utility: detect if transcript likely contains a domain ─────────
+    // Used to decide whether to show domain-mode hint in UI
+    likelyContainsDomain(text) {
+        return this.domainTriggerPhrases.some(p => p.test(text)) ||
+            /\bdot\b/i.test(text) ||
+            /\.[a-z]{2,}/i.test(text);
+    }
+}
+
 class QubitsenseAgent {
     constructor() {
         this.isOpen = false;
@@ -82,8 +337,195 @@ class QubitsenseAgent {
         this.lastDomain = localStorage.getItem('last_scanned_domain') || 'None';
         this.username = localStorage.getItem('email') || 'User'; // Adjust mapping to match typical storage
         this.render();
+
+        const GREETING_MESSAGE = `Hi, I'm Qubit! 👋 How can I help you today? I can scan domains, explain your quantum risk score, help schedule scans, or guide you through the platform.`;
+        this.conversationHistory = [{
+            role: 'model',
+            parts: [{ text: GREETING_MESSAGE }]
+        }];
+        this.addBubble('agent', GREETING_MESSAGE);
+
         this.attachEvents();
         this.initKey();
+        this.initVoice();
+    }
+
+    // ── Voice Input Engine ─────────────────────────────────────
+    initVoice() {
+        const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition) {
+            const micBtn = document.getElementById('qubit-mic-btn');
+            if (micBtn) micBtn.style.display = 'none';
+            return;
+        }
+
+        // ── Instantiate processor ──────────────────────────────────────────
+        this.transcriptProcessor = new TranscriptProcessor();
+
+        this.recognition = new SpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.lang = 'en-US';
+        this.isListening = false;
+
+        // ── Live interim results ───────────────────────────────────────────
+        this.recognition.onresult = (event) => {
+            const input = document.getElementById('qubit-input');
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const raw = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    // Full post-processing on final result
+                    finalTranscript += this.transcriptProcessor.process(raw, true);
+                } else {
+                    // Lightweight processing on interim — only apply dot/dash/underscore
+                    // so the input doesn't flicker too much during speech
+                    interimTranscript += this.transcriptProcessor.process(raw, false);
+                }
+            }
+
+            const displayText = finalTranscript || interimTranscript;
+            input.value = displayText;
+
+            // Visual cue — italic grey while interim, normal when final
+            if (interimTranscript && !finalTranscript) {
+                input.classList.add('q-interim');
+            } else {
+                input.classList.remove('q-interim');
+            }
+
+            // Show domain hint if we detect a domain being spoken
+            if (this.transcriptProcessor.likelyContainsDomain(displayText)) {
+                this.showDomainHint();
+            }
+        };
+
+        // ── Final result — auto-send ───────────────────────────────────────
+        this.recognition.onend = () => {
+            this.stopListening();
+            const input = document.getElementById('qubit-input');
+            input.classList.remove('q-interim');
+            this.hideDomainHint();
+
+            // Final cleanup pass on whatever is in the input field
+            // Note: Use click() on send button since handleSend isn't explicitly defined as a direct method yet
+            if (input.value.trim()) {
+                input.value = this.transcriptProcessor.process(input.value, true);
+                setTimeout(() => document.getElementById('qubit-send').click(), 400);
+            }
+        };
+
+        this.recognition.onerror = (event) => {
+            this.stopListening();
+            this.hideDomainHint();
+            const messages = {
+                'not-allowed': 'Microphone access denied. Please allow mic permission in your browser.',
+                'no-speech': 'No speech detected. Please try again.',
+                'network': 'Network error during voice recognition.',
+            };
+            const msg = messages[event.error];
+            if (msg) this.addBubble('agent', `🎤 ${msg}`);
+        };
+    }
+
+    startListening() {
+        if (!this.recognition || this.isListening) return;
+
+        if (!this.isOpen) {
+            document.getElementById('qubit-agent-btn').click();
+        }
+
+        this.isListening = true;
+        this.recognition.start();
+
+        const micBtn = document.getElementById('qubit-mic-btn');
+        if (micBtn) {
+            micBtn.classList.add('q-recording');
+            micBtn.setAttribute('aria-label', 'Stop recording');
+            micBtn.title = 'Click to stop';
+        }
+
+        this.showVoiceIndicator();
+
+        const input = document.getElementById('qubit-input');
+        input.value = '';
+        input.placeholder = 'Listening...';
+    }
+
+    stopListening() {
+        if (!this.recognition || !this.isListening) return;
+        this.isListening = false;
+
+        try { this.recognition.stop(); } catch (e) { }
+
+        const micBtn = document.getElementById('qubit-mic-btn');
+        if (micBtn) {
+            micBtn.classList.remove('q-recording');
+            micBtn.setAttribute('aria-label', 'Start voice input');
+            micBtn.title = 'Voice input';
+        }
+
+        this.hideVoiceIndicator();
+        document.getElementById('qubit-input').placeholder = 'Ask Qubit anything...';
+    }
+
+    toggleListening() {
+        this.isListening ? this.stopListening() : this.startListening();
+    }
+
+    showVoiceIndicator() {
+        let indicator = document.getElementById('qubit-voice-indicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'qubit-voice-indicator';
+            indicator.innerHTML = `
+                <div class="q-voice-waves">
+                    <span></span><span></span><span></span>
+                    <span></span><span></span>
+                </div>
+                <span class="q-voice-label">Listening... speak now</span>
+                <button class="q-voice-cancel" id="qubit-voice-cancel">Cancel</button>
+            `;
+            const inputRow = document.getElementById('qubit-input-row');
+            inputRow.parentNode.insertBefore(indicator, inputRow);
+
+            document.getElementById('qubit-voice-cancel').addEventListener('click', () => {
+                const input = document.getElementById('qubit-input');
+                if (input) input.value = '';
+                this.stopListening();
+            });
+        }
+        indicator.style.display = 'flex';
+    }
+
+    hideVoiceIndicator() {
+        const indicator = document.getElementById('qubit-voice-indicator');
+        if (indicator) indicator.style.display = 'none';
+    }
+
+    showDomainHint() {
+        let hint = document.getElementById('qubit-domain-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.id = 'qubit-domain-hint';
+            hint.innerHTML = `
+                🌐 <strong>Domain mode</strong> — 
+                say <em>"dot"</em> for <code>.</code>, 
+                <em>"dash"</em> for <code>-</code>
+            `;
+            const indicator = document.getElementById('qubit-voice-indicator');
+            if (indicator) indicator.appendChild(hint);
+        }
+        hint.style.display = 'block';
+    }
+
+    hideDomainHint() {
+        const hint = document.getElementById('qubit-domain-hint');
+        if (hint) hint.style.display = 'none';
     }
 
     async initKey() {
@@ -289,37 +731,63 @@ class QubitsenseAgent {
     }
 
     render() {
-        // Shield Icon payload
-        const shieldIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield-half"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 22V2"/></svg>`;
-
-        // Send Arrow Icon
-        const sendArrowIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M22 12l-18 12v-24z"/></svg>`;
-
         document.body.insertAdjacentHTML('beforeend', `
             <div id="qubit-agent-btn" title="Ask Qubit">
-                ${shieldIcon}
+                <div id="qubit-btn-inner" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; z-index: 2;">
+                    ${QUBIT_ICON_SVG}
+                </div>
+                <span id="qubit-btn-label">Ask Qubit</span>
+                <span id="qubit-pulse-ring"></span>
             </div>
             <div id="qubit-agent-panel" class="qubit-hidden">
                 <div id="qubit-header">
-                    <span class="header-label"><span class="qubit-pulse-dot"></span>QUBIT</span>
-                    <button id="qubit-close">✕</button>
+                    <div id="qubit-header-left">
+                        <div id="qubit-avatar-small" style="width: 36px; height: 36px;">
+                            ${QUBIT_ICON_SVG}
+                        </div>
+                        <div>
+                            <div id="qubit-header-name">Qubit</div>
+                            <div id="qubit-header-status">
+                                <span class="qubit-status-dot"></span> Online
+                            </div>
+                        </div>
+                    </div>
+                    <button id="qubit-close" title="Close">✕</button>
                 </div>
-                <div id="qubit-messages">
-                    <div class="qubit-bubble agent">
-                        > Qubit online.<br>
-                        > I can help you scan domains, interpret risk scores, navigate the platform, and explain PQC concepts.<br>
-                        > Awaiting query...
+                <div id="qubit-greeting-banner">
+                    <div id="qubit-greeting-mascot" style="width: 46px; height: 46px; flex-shrink: 0;">${QUBIT_ICON_SVG}</div>
+                    <div id="qubit-greeting-text">
+                        <p id="qubit-greeting-title">Hi, I'm Qubit! 👋</p>
+                        <p id="qubit-greeting-sub">
+                            Your PQC security assistant. I can help you scan domains, 
+                            understand your quantum risk score, schedule scans, and 
+                            navigate the platform.
+                        </p>
                     </div>
                 </div>
+                <div id="qubit-messages"></div>
                 <div id="qubit-suggestions">
-                    <button class="qubit-chip">Scan a domain</button>
-                    <button class="qubit-chip">Explain my risk score</button>
-                    <button class="qubit-chip">What is HNDL?</button>
-                    <button class="qubit-chip">Schedule a scan</button>
+                    <button class="qubit-chip">🔍 Scan a domain</button>
+                    <button class="qubit-chip">📊 Explain risk score</button>
+                    <button class="qubit-chip">⏰ Schedule a scan</button>
+                    <button class="qubit-chip">❓ What is HNDL?</button>
                 </div>
                 <div id="qubit-input-row">
-                    <input id="qubit-input" type="text" placeholder="cmd: " autocomplete="off"/>
-                    <button id="qubit-send" title="Send Payload">${sendArrowIcon}</button>
+                    <input id="qubit-input" type="text" placeholder="Ask Qubit anything..." autocomplete="off"/>
+                    <button id="qubit-mic-btn" aria-label="Start voice input" title="Voice input">
+                        <svg id="qubit-mic-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z"/>
+                            <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 10z"/>
+                        </svg>
+                        <svg id="qubit-stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="white" style="display:none">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        </svg>
+                    </button>
+                    <button id="qubit-send">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                            <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
         `);
@@ -334,14 +802,21 @@ class QubitsenseAgent {
             this.isOpen = !this.isOpen;
             if (this.isOpen) {
                 panel.classList.remove('qubit-hidden');
+                btn.classList.add('panel-open');
+                const banner = document.getElementById('qubit-greeting-banner');
+                if (banner && this.conversationHistory.length > 1) {
+                    banner.style.display = 'none';
+                }
             } else {
                 panel.classList.add('qubit-hidden');
+                btn.classList.remove('panel-open');
             }
         });
 
         closeBtn.addEventListener('click', () => {
             this.isOpen = false;
             panel.classList.add('qubit-hidden');
+            btn.classList.remove('panel-open');
         });
 
         const sendBtn = document.getElementById('qubit-send');
@@ -350,20 +825,41 @@ class QubitsenseAgent {
         const sendHandler = () => {
             const text = inputFld.value.trim();
             if (text) {
+                const banner = document.getElementById('qubit-greeting-banner');
+                if (banner) banner.style.display = 'none';
                 this.sendMessage(text);
                 inputFld.value = '';
             }
         };
 
         sendBtn.addEventListener('click', sendHandler);
-        inputFld.addEventListener('keypress', (e) => {
+        inputFld.addEventListener('keydown', (e) => {
+            if (this.isListening && e.key !== 'Enter') {
+                this.stopListening();
+            }
             if (e.key === 'Enter') sendHandler();
         });
+
+        // Mic Button Logic
+        const micBtn = document.getElementById('qubit-mic-btn');
+        if (micBtn) {
+            micBtn.addEventListener('click', () => this.toggleListening());
+            const observer = new MutationObserver(() => {
+                const recording = micBtn.classList.contains('q-recording');
+                const micIcon = document.getElementById('qubit-mic-icon');
+                const stopIcon = document.getElementById('qubit-stop-icon');
+                if (micIcon) micIcon.style.display = recording ? 'none' : 'block';
+                if (stopIcon) stopIcon.style.display = recording ? 'block' : 'none';
+            });
+            observer.observe(micBtn, { attributes: true, attributeFilter: ['class'] });
+        }
 
         // Chips
         document.querySelectorAll('.qubit-chip').forEach(chip => {
             chip.addEventListener('click', () => {
                 const text = chip.textContent;
+                const banner = document.getElementById('qubit-greeting-banner');
+                if (banner) banner.style.display = 'none';
                 this.sendMessage(text);
             });
         });

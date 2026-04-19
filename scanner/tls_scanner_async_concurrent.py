@@ -369,23 +369,37 @@ class AsyncTLSScanner:
             result["ip_address"] = ip
             print(f"  [✓] Resolved to {ip}", flush=True)
 
-            # Stage 2: TCP Pre-Check
+            # Stage 2: TCP Pre-Check & Multi-Port Fallback Algorithm
             tcp_status = await tcp_check(hostname, ip, 443)
+            scan_port = 443
+
+            if tcp_status != "open":
+                fallback_ports = [8443, 4433, 9443, 2083, 2087, 8080, 8888]
+                print(f"  [!] Port 443 {tcp_status} - Initiating Multi-Port Fallback sweep for {hostname}...", flush=True)
+                for fport in fallback_ports:
+                    f_status = await tcp_check(hostname, ip, fport)
+                    if f_status == "open":
+                        print(f"  [+] WAF/Firewall Bypass Success: Port {fport} OPEN for {hostname}!", flush=True)
+                        scan_port = fport
+                        tcp_status = "open"
+                        break
 
             if tcp_status == "timeout":
-                result["error"] = "Connection Timeout"
+                result["error"] = "Connection Timeout (Scanned all fallback ports)"
                 result["failure_code"] = "TCP_TIMEOUT"
-                print(f"  [✗] Connection Timeout for {hostname} (port 443)", flush=True)
+                print(f"  [✗] Connection Timeout for {hostname} on all ports (Definitively Air-gapped/Internal)", flush=True)
                 return result
             elif tcp_status == "refused":
-                result["error"] = "Connection Refused"
+                result["error"] = "Connection Refused (All Ports)"
                 result["failure_code"] = "TCP_REFUSED"
-                print(f"  [✗] Connection Refused for {hostname} (port 443)", flush=True)
+                print(f"  [✗] Connection Refused for {hostname} on all fallback ports", flush=True)
                 return result
 
+            result["port"] = scan_port
+
             # Stage 3: 3-Tier TLS Handshake with Retry
-            print(f"  [·] TCP open, attempting TLS handshake...", flush=True)
-            tls_result = await tls_scan_with_fallback(hostname, ip, 443)
+            print(f"  [·] TCP open on port {scan_port}, attempting TLS handshake...", flush=True)
+            tls_result = await tls_scan_with_fallback(hostname, ip, scan_port)
 
             if tls_result["status"] == "success":
                 result["tls_version"] = tls_result["tls_version"]
@@ -450,6 +464,7 @@ def discover_subdomains_ct_logs(domain: str) -> List[str]:
 # ============================================================================
 
 def print_summary(results: List[Dict]):
+
     """Print scan summary with failure code breakdown."""
     print(f"\n\n{'='*70}", flush=True)
     print("CONCURRENT SCAN SUMMARY", flush=True)
