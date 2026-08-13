@@ -1,7 +1,22 @@
 /**
  * Risk Chart component.
  * Renders a Chart.js doughnut chart showing quantum risk distribution (PQC Posture).
+ *
+ * Uses the backend's own risk_label on each result (from
+ * analysis/quantum_risk_engine.py::get_risk_label) rather than recomputing
+ * thresholds client-side — this used to independently re-bucket scores into
+ * a different 3-tier scheme (Legacy/Standard/Elite-PQC) with different cutoffs
+ * than the dashboard's own classification column, so the donut and the table
+ * could disagree about the same asset. Now both read the same field.
  */
+
+const RISK_LABEL_COLORS = {
+    'Quantum Safe': { bg: 'rgba(52, 211, 153, 0.85)', border: 'rgba(52, 211, 153, 1)' },
+    'Transitioning': { bg: 'rgba(251, 191, 36, 0.85)', border: 'rgba(251, 191, 36, 1)' },
+    'Quantum Vulnerable': { bg: 'rgba(251, 146, 60, 0.85)', border: 'rgba(251, 146, 60, 1)' },
+    'Critical': { bg: 'rgba(248, 113, 113, 0.85)', border: 'rgba(248, 113, 113, 1)' },
+};
+const RISK_LABEL_ORDER = ['Quantum Safe', 'Transitioning', 'Quantum Vulnerable', 'Critical'];
 
 class RiskChart {
     /**
@@ -9,15 +24,11 @@ class RiskChart {
      * @param {Array}  quantumResults — array from GET /scan/{id}/quantum-risk
      */
     static render(canvasId, quantumResults) {
-        const counts = { 'Legacy': 0, 'Standard': 0, 'Elite-PQC': 0 };
+        const counts = { 'Quantum Safe': 0, 'Transitioning': 0, 'Quantum Vulnerable': 0, 'Critical': 0 };
 
         quantumResults.forEach((r) => {
-            const score = r.risk_score || 0;
-            const rating = (100 - score) * 10;
-            
-            if (rating < 400) counts['Legacy']++;
-            else if (rating >= 700) counts['Elite-PQC']++;
-            else counts['Standard']++;
+            const label = RISK_LABEL_ORDER.includes(r.risk_label) ? r.risk_label : 'Transitioning';
+            counts[label]++;
         });
 
         const ctx = document.getElementById(canvasId).getContext('2d');
@@ -25,20 +36,12 @@ class RiskChart {
         return new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Legacy (High Exposure)', 'Standard (Transitional)', 'Elite-PQC (Safe)'],
+                labels: RISK_LABEL_ORDER,
                 datasets: [
                     {
-                        data: [counts['Legacy'], counts['Standard'], counts['Elite-PQC']],
-                        backgroundColor: [
-                            'rgba(248, 113, 113, 0.85)',
-                            'rgba(251, 191, 36, 0.85)',
-                            'rgba(52, 211, 153, 0.85)',
-                        ],
-                        borderColor: [
-                            'rgba(248, 113, 113, 1)',
-                            'rgba(251, 191, 36, 1)',
-                            'rgba(52, 211, 153, 1)',
-                        ],
+                        data: RISK_LABEL_ORDER.map((l) => counts[l]),
+                        backgroundColor: RISK_LABEL_ORDER.map((l) => RISK_LABEL_COLORS[l].bg),
+                        borderColor: RISK_LABEL_ORDER.map((l) => RISK_LABEL_COLORS[l].border),
                         borderWidth: 2,
                         hoverOffset: 8,
                     },

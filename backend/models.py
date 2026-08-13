@@ -40,12 +40,18 @@ class TlsResultItem(BaseModel):
     id: int
     hostname: str
     port: int
+    ip_address: str | None = None
     tls_version: str | None
     cipher_suite: str | None
     key_algorithm: str | None
     key_size: int | None
     signature_algorithm: str | None
     certificate_expiry: str | None
+    hostname_mismatch: bool | None = None
+    is_self_signed: bool | None = None
+    is_expired: bool | None = None
+    days_until_expiry: int | None = None
+    issuer: str | None = None
 
 
 class TlsResultsResponse(BaseModel):
@@ -55,7 +61,13 @@ class TlsResultsResponse(BaseModel):
 
 
 class QuantumRiskResultItem(BaseModel):
-    """Single Quantum Risk assessment result."""
+    """Single Quantum Risk assessment result.
+
+    The first six component fields predate the v2 scoring model and keep
+    their original names and meaning; the remaining fields expose the four
+    components v2 added plus the scoring stages (composite, floor, HNDL
+    uplift) so a consumer can reproduce the total instead of trusting it.
+    """
     hostname: str
     port: int
     risk_score: int
@@ -66,6 +78,16 @@ class QuantumRiskResultItem(BaseModel):
     key_size_penalty: int
     certificate_validity_score: int
     cipher_score: int
+    forward_secrecy_score: int = 0
+    cipher_mode_score: int = 0
+    hash_score: int = 0
+    certificate_trust_score: int = 0
+    composite_score: float = 0.0
+    applied_floor: str | None = None
+    hndl_multiplier: float = 1.0
+    hndl_uplift: float = 0.0
+    quantum_safe_key_exchange: bool = False
+    quantum_safe_signature: bool = False
 
 
 class QuantumRiskResponse(BaseModel):
@@ -107,14 +129,27 @@ class AlgorithmAnalysisResponse(BaseModel):
     results: list[AlgorithmAnalysisItem]
 
 
+class ScoreComponent(BaseModel):
+    """One weighted component of the quantum risk score."""
+    key: str
+    label: str
+    raw_score: int
+    weight: float
+    weighted_contribution: float
+
+
 class AssetScoreBreakdown(BaseModel):
-    """Component scores for the quantum risk."""
+    """Component scores for the quantum risk (raw 0-100, higher is worse)."""
     key_exchange: int
     signature: int
     tls: int
     key_size: int
     certificate: int
     cipher: int
+    forward_secrecy: int = 0
+    cipher_mode: int = 0
+    hash: int = 0
+    certificate_trust: int = 0
 
 
 class AssetDetailsResponse(BaseModel):
@@ -132,6 +167,20 @@ class AssetDetailsResponse(BaseModel):
     certificate_expiry: str | None
     hndl_level: str | None
     pqc_recommendations: list[str]
+    hostname_mismatch: bool | None = None
+    is_self_signed: bool | None = None
+    is_expired: bool | None = None
+    days_until_expiry: int | None = None
+    issuer: str | None = None
+    # Full v2 scoring detail: every component ranked by how much it
+    # actually contributed to this asset's score, plus the stages that
+    # produced the total.
+    score_components: list[ScoreComponent] = []
+    composite_score: float = 0.0
+    applied_floor: str | None = None
+    hndl_multiplier: float = 1.0
+    hndl_uplift: float = 0.0
+    risk_label: str | None = None
 
 
 class ScanFailureItem(BaseModel):
@@ -159,6 +208,18 @@ class DomainScanHistoryItem(BaseModel):
     tls_count: int
     failure_count: int
     created_at: str
+
+
+class AgentChatMessage(BaseModel):
+    """Single turn in a Qubit conversation."""
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class AgentChatRequest(BaseModel):
+    """Request body for the Qubit chat proxy."""
+    system: str
+    messages: list[AgentChatMessage]
 
 
 class DomainScanHistoryResponse(BaseModel):

@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard — Quantum Proof System Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
     <meta name="description"
         content="Quantum cryptographic risk dashboard with HNDL detection and attack surface visualization." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,38 +13,15 @@
         rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        // Tailwind is used for LAYOUT ONLY on this page (flex/grid/spacing/
+        // rounding/sizing). Color comes exclusively from pnb-theme.css's
+        // .pnb-* component classes and CSS custom properties — see that
+        // file's header comment for why the old per-page color remap
+        // (previously configured here) was removed.
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-                    colors: {
-                        // INVERSION MATRIX: Maps Dark Mode IDs to PNB Light Mode values
-                        white: '#1e293b', // Force legibility over white backgrounds
-                        slate: {
-                            50: '#0f172a',
-                            100: '#1e293b',
-                            300: '#334155', // Dark text replacement
-                            400: '#475569', // Med text replacement
-                            500: '#64748b', // Muted text replacement
-                            600: '#94a3b8',
-                            700: '#cbd5e1', // Light border replacement
-                            800: '#f1f5f9', // Off-white panel/hover replacement
-                            900: '#ffffff', // Pure white panel background
-                            950: '#f8fafc', // Very light App background
-                        },
-                        indigo: {
-                            // Maps Cyberpunk glowing blues to PNB Corporate Maroon
-                            300: '#be123c', // Lighter red text
-                            400: '#e11d48',
-                            500: '#a80024', // Primary PNB Maroon
-                            600: '#88001b', // Darker PNB hover
-                        },
-                        amber: {
-                            // PNB Corporate Gold accent enhancements
-                            400: '#f59e0b',
-                            500: '#d97706',
-                        }
-                    }
                 },
             },
         };
@@ -53,26 +31,24 @@
     <!-- Cytoscape.js -->
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
     <!-- Components -->
-    <script src="/components/risk_chart.js"></script>
-    <script src="/components/graph_viewer.js"></script>
-    <script src="/components/cbom_charts.js"></script>
+    <script src="/components/risk_chart.js?v=2"></script>
+    <script src="/components/graph_viewer.js?v=2"></script>
+    <script src="/components/cbom_charts.js?v=2"></script>
     <link rel="stylesheet" href="/components/pnb-theme.css">
     <style>
-        body {
-            background-color: #f1f5f9;
-            background-image: url('/components/pnb_bg.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            color: #334155;
-        }
+        /* body background is now supplied globally by pnb-theme.css (the
+           maroon branded shell) — no per-page override needed here. */
 
+        /* .panel is this page's pre-existing card class, used in dozens of
+           places below. Rather than mass-rename every "panel" to "pnb-card"
+           across a 2200-line file, it's redefined here to reuse the shared
+           design tokens — same visual result, far fewer edits. */
         .panel {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            background: var(--pnb-surface);
+            border: 1px solid var(--pnb-border);
+            border-radius: var(--pnb-radius);
+            box-shadow: var(--pnb-shadow);
+            color: var(--pnb-ink);
         }
 
         .inner-shadow {
@@ -120,67 +96,294 @@
             height: 100%;
             width: 100%;
         }
+
+        .spinner-sm {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, .3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin06 .6s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes spin06 {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Download Report control — colors are set explicitly (not via
+           Tailwind color utility classes) rather than with .pnb-btn-*,
+           since this control needs its own gold treatment distinct from
+           the standard button palette. The !important keywords this block
+           used to need are gone: the old pnb-theme.css forced slate/
+           indigo/amber classes to maroon/white with !important, which
+           fought these rules and washed the button into the header /
+           made the menu text render white-on-white. The rewritten
+           pnb-theme.css no longer touches these IDs/classes at all, so
+           plain specificity is enough now. */
+        #downloadReportBtn {
+            background: #F0C040;
+            color: #4E0B11;
+            border: 1px solid #D4A017;
+            font-weight: 800;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        #downloadReportBtn:hover {
+            background: #F7D165;
+            color: #4E0B11;
+        }
+
+        #downloadReportMenu {
+            background: #ffffff;
+            border: 1px solid #D4A017;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        #downloadReportMenu .report-menu-label {
+            color: #94734a;
+            background: #FDF3D0;
+        }
+
+        .download-report-option {
+            background: #ffffff;
+        }
+
+        .download-report-option:hover {
+            background: #FDF3D0;
+        }
+
+        .download-report-option .fmt-name {
+            color: #1e293b;
+            font-weight: 700;
+        }
+
+        .download-report-option .fmt-sub {
+            color: #64748b;
+            font-weight: 400;
+        }
+
+        .download-report-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        /* Asset Inventory contextual tabs — shared between the initial
+           markup and switchAssetTab()'s JS so both stay in sync. */
+        .pnb-tab-active {
+            background: rgba(123, 21, 32, .12);
+            color: var(--pnb-maroon);
+            border-color: rgba(123, 21, 32, .35);
+        }
+
+        .pnb-tab-inactive {
+            color: var(--pnb-ink-muted);
+            border-color: transparent;
+        }
+
+        .pnb-tab-inactive:hover {
+            background: var(--pnb-surface-alt);
+        }
     </style>
 </head>
 
-<body class="font-sans text-slate-700 min-h-screen overflow-x-hidden">
+<body class="font-sans min-h-screen overflow-x-hidden">
 
     <!-- ──────── PNB Corporate Navigation ──────── -->
-    <header class="relative z-20 border-b border-slate-700/50 bg-[#a80024] text-white shadow-md"
-        style="color: #ffffff;">
+    <header class="relative z-20 pnb-shell shadow-md" style="border-bottom: 1px solid var(--pnb-shell-border);">
         <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <span class="text-2xl drop-shadow-md">🏦</span>
-                <h1 class="font-extrabold text-lg tracking-tight">Punjab National Bank <span
-                        class="text-amber-400 font-medium px-2">—</span> Enterprise PQC Dashboard</h1>
+                <h1 class="font-extrabold text-lg tracking-tight pnb-shell-text">Punjab National Bank <span
+                        class="font-medium px-2" style="color: var(--pnb-gold-light);">—</span> Enterprise PQC Dashboard</h1>
             </div>
 
             <div class="flex gap-3">
-                <button id="exportJsonBtn" class="px-4 py-2 rounded-lg text-xs font-semibold bg-[#88001b] border border-red-900/50
-                       hover:bg-red-900 transition text-red-100 shadow-inner">
-                    ⬇ Download JSON
+                <button id="rescanBtn" disabled title="Loading scan details…" class="px-4 py-2 rounded-lg text-xs font-semibold bg-[#88001b] border border-red-900/50
+                       hover:bg-red-900 transition text-red-100 shadow-inner disabled:opacity-50 disabled:cursor-not-allowed">
+                    🔄 Rescan
                 </button>
-                <button id="exportPdfBtn" class="px-4 py-2 rounded-lg text-xs font-semibold bg-[#88001b] border border-red-900/50
-                       hover:bg-red-900 transition text-red-100 shadow-inner">
-                    📄 Download PDF
+                <div class="relative" id="downloadReportWrap">
+                    <button id="downloadReportBtn" type="button" aria-haspopup="true" aria-expanded="false"
+                        class="px-4 py-2 rounded-lg text-xs transition flex items-center gap-1.5">
+                        ⬇ Download Report
+                        <span class="text-[9px]">▾</span>
+                    </button>
+                    <div id="downloadReportMenu"
+                        class="hidden absolute right-0 mt-2 w-72 rounded-xl z-30 overflow-hidden">
+                        <div class="report-menu-label px-4 py-2 text-[10px] font-bold uppercase tracking-wider">
+                            Export this scan
+                        </div>
+                        <button data-format="json"
+                            class="download-report-option w-full text-left px-4 py-3 transition flex items-center gap-3">
+                            <span class="download-report-icon" style="background:#e0e7ff;">⬇</span>
+                            <span>
+                                <div class="fmt-name text-sm">JSON</div>
+                                <div class="fmt-sub text-[11px]">Full raw report — every table, machine-readable</div>
+                            </span>
+                        </button>
+                        <button data-format="pdf"
+                            class="download-report-option w-full text-left px-4 py-3 transition flex items-center gap-3"
+                            style="border-top: 1px solid #f0e4c4;">
+                            <span class="download-report-icon" style="background:#fee2e2;">📄</span>
+                            <span>
+                                <div class="fmt-name text-sm">PDF</div>
+                                <div class="fmt-sub text-[11px]">Printable report — same data, formatted</div>
+                            </span>
+                        </button>
+                        <button data-format="cyclonedx"
+                            class="download-report-option w-full text-left px-4 py-3 transition flex items-center gap-3"
+                            style="border-top: 1px solid #f0e4c4;">
+                            <span class="download-report-icon" style="background:#d1fae5;">🛠️</span>
+                            <span>
+                                <div class="fmt-name text-sm">CycloneDX</div>
+                                <div class="fmt-sub text-[11px]">CBOM/SBOM — for crypto-asset tooling</div>
+                            </span>
+                        </button>
+                    </div>
+                </div>
+                <button id="deleteScanBtn" type="button" title="Delete this scan permanently"
+                    class="px-4 py-2 rounded-lg text-xs font-semibold transition"
+                    style="background:#88001b; color:#FFE9E9; border:1px solid rgba(212,160,23,.35);">
+                    🗑 Delete Scan
                 </button>
-                <a href="/user-dashboard" id="navDashboardBtn"
-                    class="hidden text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md flex items-center">My
-                    Scans</a>
-                <a href="/login" id="authBtn"
-                    class="role-auth-btn text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md flex items-center">Login</a>
+                <!-- Navigation and auth now live in the shared sidebar
+                     (components/sidebar.js). This header keeps only the
+                     actions that belong to THIS scan. -->
             </div>
         </div>
     </header>
 
+    <!-- Zero-host banner: shown when a scan reached no hosts. Without it the
+         dashboard renders a full page of zeroes that is indistinguishable
+         from a real estate scoring badly. -->
+    <div id="emptyScanBanner" class="hidden relative z-10 max-w-7xl mx-auto px-6 pt-6">
+        <div class="rounded-xl p-5" style="background:#4E0B11; border:1px solid #d03b3b;">
+            <div class="flex items-start gap-3">
+                <span class="text-2xl">⚠️</span>
+                <div>
+                    <p class="font-extrabold text-sm mb-1" style="color:#F0C040;">This scan produced no results</p>
+                    <p class="text-xs leading-relaxed" style="color:#F5EDED;" id="emptyScanText"></p>
+                    <p class="text-xs mt-2" style="color:#E7C9C9;">
+                        Reports are unavailable for this scan. Try re-scanning, or delete it.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete confirmation. A custom modal, not window.confirm(), so the
+         dialog can name the scan and state what is destroyed. -->
+    <div id="delModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center px-4"
+        style="background:rgba(0,0,0,.62);">
+        <div class="rounded-xl p-6 w-full" style="max-width:460px; background:#fcfcfb; border:1px solid rgba(11,11,11,.12);">
+            <h2 class="font-extrabold text-base mb-2" style="color:#0b0b0b;">Delete this scan?</h2>
+            <p class="text-xs leading-relaxed mb-4" style="color:#52514e;">
+                <strong id="delLabel" style="color:#0b0b0b;"></strong> will be permanently removed from your
+                history, analytics, domain leaderboard, trends and the result cache.
+                <strong style="color:#0b0b0b;">This cannot be undone.</strong>
+            </p>
+            <div id="delErr" class="hidden mb-3" style="font-size:12px;color:#d03b3b;font-weight:600;"></div>
+            <div class="flex justify-end gap-2">
+                <button id="delCancelBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold"
+                    style="background:transparent;color:#52514e;border:1px solid #c3c2b7;">Cancel</button>
+                <button id="delOkBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-extrabold"
+                    style="background:#d03b3b;color:#fff;border:1px solid #a82f2f;">Delete permanently</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ──────── Header Stats ──────── -->
     <header class="relative z-10 max-w-7xl mx-auto px-6 pt-8 pb-4 fade-in">
-        <h1 class="text-2xl font-extrabold mb-1">
-            Scan Results: <span id="headerDomain"
-                class="text-slate-900 bg-slate-100 px-2 py-1 rounded border border-slate-300 shadow-sm"
-                style="color: #4E0B11 !important; font-weight: 900;">…</span>
+        <h1 class="text-2xl font-extrabold mb-1 pnb-shell-text">
+            Scan Results: <span id="headerDomain" class="px-2 py-1 rounded shadow-sm"
+                style="color: #4E0B11; font-weight: 900; background: var(--pnb-gold-light); border: 1px solid var(--pnb-gold);">…</span>
         </h1>
-        <p class="text-sm text-slate-500 mb-6">Scan ID: <span id="headerScanId">…</span></p>
+        <p class="text-sm pnb-shell-text-muted mb-4">Scan ID: <span id="headerScanId">…</span></p>
+
+        <!-- Executive Summary — one auto-generated sentence, the whole scan at a
+             glance, before a reader touches any chart or table. -->
+        <div id="execSummary" class="panel p-4 mb-6 border-l-4 border-l-[#a80024] text-sm pnb-text leading-relaxed">
+            <span class="inline-block w-4 h-4 border-2 rounded-full animate-spin align-middle mr-2"
+                style="border-color: var(--pnb-border-strong); border-top-color: #a80024;"></span>
+            Analyzing scan results…
+        </div>
+
+        <!-- Harvest-Now, Decrypt-Later Countdown — makes the abstract HNDL
+             score visceral: a live-ticking countdown to when today's
+             captured traffic becomes decryptable. The target date is a
+             labeled, sourced industry estimate (not computed per-scan);
+             only the "N of your assets" line below it uses this scan's
+             real HNDL data. -->
+        <div class="panel p-5 mb-6 relative overflow-hidden"
+            style="background: linear-gradient(135deg, #4E0B11, #1e293b); border: 1px solid #a80024;"
+            title="Estimate window (2030-2035) per the Global Risk Institute's quantum-threat expert-survey. Counting down to the EARLIEST year in that range (2030) — a deliberately cautious, plan-for-the-worst-case posture. Not derived from this scan.">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <p class="text-xs uppercase tracking-wider font-bold flex items-center gap-2" style="color:#F0C040;">
+                        <span class="text-base">⏳</span> Harvest-Now, Decrypt-Later Countdown
+                    </p>
+                    <p class="text-[11px] mt-1 max-w-md" style="color:#cbd5e1;">
+                        Data intercepted and stored today becomes readable the moment a cryptographically-relevant
+                        quantum computer (CRQC) arrives — estimated
+                        <span class="font-bold" style="color:#fff;">2030–2035</span>
+                        (Global Risk Institute expert-survey range). Counting down to the
+                        <span class="font-bold" style="color:#fff;">earliest</span> year — plan for the worst case.
+                    </p>
+                    <p id="hndlClockContext" class="text-[11px] mt-2 font-semibold" style="color:#F0C040;">&nbsp;</p>
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <div class="bg-black/30 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                        <div id="clockDays" class="text-2xl font-extrabold tabular-nums" style="color:#fff;">--</div>
+                        <div class="text-[9px] uppercase tracking-wider font-bold" style="color:#94a3b8;">Days</div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                        <div id="clockHours" class="text-2xl font-extrabold tabular-nums" style="color:#fff;">--</div>
+                        <div class="text-[9px] uppercase tracking-wider font-bold" style="color:#94a3b8;">Hrs</div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                        <div id="clockMins" class="text-2xl font-extrabold tabular-nums" style="color:#fff;">--</div>
+                        <div class="text-[9px] uppercase tracking-wider font-bold" style="color:#94a3b8;">Min</div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                        <div id="clockSecs" class="text-2xl font-extrabold tabular-nums" style="color:#fff;">--</div>
+                        <div class="text-[9px] uppercase tracking-wider font-bold" style="color:#94a3b8;">Sec</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div class="panel p-5">
-                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Assets Scanned</p>
-                <p id="statAssets" class="text-3xl font-extrabold text-indigo-600">-</p>
+                <p class="text-xs uppercase tracking-wider pnb-text-muted mb-1">Assets Scanned</p>
+                <p id="statAssets" class="text-3xl font-extrabold pnb-text">-</p>
+                <p id="statAssetsSub" class="text-[11px] pnb-text-muted mt-1">&nbsp;</p>
             </div>
-            <div class="panel p-5 relative overflow-hidden">
+            <div class="panel p-5 relative overflow-hidden" title="Rating = (100 - average quantum risk score) × 10, on a 0-1000 scale. The average is taken over every successfully scanned asset, each scored by the 10-component weighted model shown in the Scoring Methodology panel below.">
                 <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">☆</div>
-                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Enterprise Rating</p>
+                <p class="text-xs uppercase tracking-wider pnb-text-muted mb-1">Enterprise Rating <span class="pnb-text-muted normal-case font-normal">(ⓘ hover)</span></p>
                 <div class="flex items-baseline gap-1">
-                    <p id="statCyberRating" class="text-3xl font-extrabold text-amber-500">-</p>
-                    <span class="text-sm text-slate-500 font-bold">/1000</span>
+                    <p id="statCyberRating" class="text-3xl font-extrabold" style="color: var(--pnb-maroon);">-</p>
+                    <span class="text-sm pnb-text-muted font-bold">/1000</span>
                 </div>
             </div>
-            <div class="panel p-5">
-                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Posture Tier</p>
-                <p id="statTier" class="text-2xl font-extrabold text-emerald-600 mt-1">-</p>
+            <div class="panel p-5" title="Five tiers, divided on exact risk boundaries: Elite-PQC 850-1000 (avg risk ≤15), Advanced 700-849 (≤30), Standard 550-699 (≤45), Developing 400-549 (≤60), Legacy 0-399 (>60). Served from the backend scoring model.">
+                <p class="text-xs uppercase tracking-wider pnb-text-muted mb-1">Posture Tier <span class="pnb-text-muted normal-case font-normal">(ⓘ hover)</span></p>
+                <p id="statTier" class="text-2xl font-extrabold mt-1" style="color: var(--pnb-risk-safe);">-</p>
+                <p id="statTierScale" class="text-[10px] pnb-text-muted mt-1 leading-tight">&nbsp;</p>
             </div>
-            <div class="panel p-5">
-                <p class="text-xs uppercase tracking-wider text-slate-500 mb-1">Critical/High Risk</p>
+            <div class="panel p-5" title="Assets whose risk_label is 'Quantum Vulnerable' or 'Critical' — the same classification shown in the Asset Inventory table and the JSON export.">
+                <p class="text-xs uppercase tracking-wider pnb-text-muted mb-1">Vulnerable or Critical</p>
                 <div class="flex items-baseline gap-2">
                     <p id="statCritRisk" class="text-3xl font-extrabold text-red-600">-</p>
                     <span class="text-xs font-bold uppercase text-red-500/50">Assets</span>
@@ -191,6 +394,105 @@
 
     <!-- ──────── Main Content Grid ──────── -->
     <main class="relative z-10 max-w-7xl mx-auto px-6 pb-12 space-y-6">
+
+        <!-- Migration ROI Simulator — projects the posture impact of PQC
+             migration using this scan's real per-asset scores, recomputed
+             with the exact same weighting the Enterprise Rating tile uses.
+             Not a live rescan; a client-side what-if preview. -->
+        <section class="panel p-6 fade-in" style="border: 1px solid #a80024;">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-base font-bold flex items-center gap-2">
+                        <span class="text-lg">🔬</span> Migration ROI Simulator
+                    </h2>
+                    <p class="text-[11px] pnb-text-muted mt-1 max-w-xl">Preview the posture impact of migrating
+                        assets to NIST-standardized PQC algorithms (ML-KEM key exchange + ML-DSA signatures) —
+                        before committing engineering time.</p>
+                </div>
+                <div class="flex gap-2 flex-wrap shrink-0">
+                    <button onclick="simulateMigration('top5')" class="pnb-btn-danger px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap">Migrate
+                        Top 5 Riskiest</button>
+                    <button onclick="simulateMigration('half')"
+                        class="bg-amber-600 hover:brightness-110 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap">Migrate
+                        Half the Fleet</button>
+                    <button onclick="simulateMigration('all')"
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap">Migrate
+                        Everything</button>
+                    <button onclick="simulateMigration('reset')" class="pnb-btn-secondary px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap">Reset</button>
+                </div>
+            </div>
+
+            <div id="simEmptyState" class="text-xs pnb-text-muted py-6 text-center">Pick a scope above to preview
+                its projected posture.</div>
+
+            <div id="simResults" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="rounded-xl p-4" style="background:#3a0d13; border:1px solid rgba(255,255,255,0.15);">
+                    <p class="text-[10px] uppercase tracking-wider font-bold mb-3" style="color:#94a3b8;">Current</p>
+                    <div class="flex items-baseline gap-2 mb-1">
+                        <span id="simCurrentRating" class="text-3xl font-extrabold" style="color:#fff;">-</span>
+                        <span class="text-xs font-bold" style="color:#94a3b8;">/1000</span>
+                    </div>
+                    <p id="simCurrentTier" class="text-sm font-bold mb-3">-</p>
+                    <div id="simCurrentBuckets" class="space-y-1 text-xs" style="color:#e2e8f0;"></div>
+                </div>
+                <div class="rounded-xl p-4" style="background:#0b2e22; border:2px solid #34d399;">
+                    <p class="text-[10px] uppercase tracking-wider font-bold mb-3" style="color:#34d399;">Projected
+                        After Migration</p>
+                    <div class="flex items-baseline gap-2 mb-1">
+                        <span id="simProjRating" class="text-3xl font-extrabold" style="color:#34d399;">-</span>
+                        <span class="text-xs font-bold" style="color:#6ee7b7;">/1000</span>
+                        <span id="simRatingDelta" class="text-xs font-bold ml-1" style="color:#34d399;"></span>
+                    </div>
+                    <p id="simProjTier" class="text-sm font-bold mb-3">-</p>
+                    <div id="simProjBuckets" class="space-y-1 text-xs" style="color:#e2e8f0;"></div>
+                </div>
+            </div>
+            <p id="simFootnote" class="text-[10px] pnb-text-muted mt-3"></p>
+        </section>
+
+        <!-- Scoring Methodology — rendered from /scoring-model, which serves
+             the constants straight out of analysis/quantum_risk_engine.py.
+             Nothing here is retyped in the frontend, so what is displayed is
+             provably the model that produced the scores above. -->
+        <section class="panel p-6 fade-in">
+            <div class="flex items-start justify-between gap-4 mb-1 flex-wrap">
+                <h2 class="text-base font-bold flex items-center gap-2">
+                    <span class="text-lg">🧮</span> Scoring Methodology
+                </h2>
+                <button id="toggleMethodology" type="button"
+                    class="text-[11px] font-bold px-3 py-1.5 rounded-lg transition"
+                    style="background:#F0C040; color:#4E0B11; border:1px solid #D4A017;">
+                    Show details
+                </button>
+            </div>
+            <p class="text-[11px] pnb-text-muted mb-4" id="methodologySubtitle">
+                Every score on this page is derived from measured handshake and certificate data — no fixed or sample values.
+            </p>
+            <div id="methodologyBody" class="hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider font-bold pnb-text-muted mb-2">
+                            Weighted components <span id="methodologyWeightTotal" class="normal-case font-normal pnb-text-muted"></span>
+                        </p>
+                        <div id="methodologyWeights" class="space-y-1.5"></div>
+                    </div>
+                    <div class="space-y-5">
+                        <div>
+                            <p class="text-[10px] uppercase tracking-wider font-bold pnb-text-muted mb-2">Risk bands (per asset)</p>
+                            <div id="methodologyBands" class="space-y-1"></div>
+                        </div>
+                        <div>
+                            <p class="text-[10px] uppercase tracking-wider font-bold pnb-text-muted mb-2">Posture tiers (fleet)</p>
+                            <div id="methodologyTiers" class="space-y-1"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 pt-4" style="border-top: 1px solid var(--pnb-border);">
+                    <p class="text-[10px] uppercase tracking-wider font-bold pnb-text-muted mb-2">Scoring stages</p>
+                    <div id="methodologyStages" class="text-[11px] pnb-text-2 space-y-1.5"></div>
+                </div>
+            </div>
+        </section>
 
         <!-- Row 1: Risk Chart, Heatmap, Remediation -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -210,69 +512,63 @@
                 <h2 class="text-base font-bold mb-4 flex items-center gap-2">
                     <span class="text-lg">🔥</span> Risk Heatmap
                 </h2>
-                <div class="flex-1 rounded-xl bg-slate-100 border border-slate-300/50 p-4 grid grid-cols-5 grid-rows-5 gap-1.5 shadow-inner h-[250px]"
+                <div class="flex-1 rounded-xl p-4 grid grid-cols-5 grid-rows-5 gap-1.5 shadow-inner h-[250px]"
+                    style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);"
                     id="riskHeatmap">
                     <!-- JS populated squares -->
                 </div>
-                <div class="mt-2 flex justify-between text-[10px] text-slate-500 uppercase font-bold px-1">
-                    <span>Critical</span>
-                    <span>Safe</span>
+                <div class="mt-2 flex justify-between flex-wrap gap-2 text-[10px] pnb-text-muted uppercase font-bold px-1">
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-emerald-500 inline-block"></span>Quantum Safe</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-500 inline-block"></span>Transitioning</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-orange-500 inline-block"></span>Vulnerable</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-red-500 inline-block"></span>Critical</span>
                 </div>
             </section>
 
-            <!-- Continual Remediation Checklist -->
-            <section class="panel p-6 fade-in fade-in-d2">
-                <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+            <!-- Improvement Tasks — computed live from this scan's actual
+                 findings (see computeImprovementTasks()). Not a static
+                 checklist: items appear only when the underlying condition
+                 is true for THIS domain, and each links to a real average
+                 or count from the data, not boilerplate copy. -->
+            <section class="panel p-6 fade-in fade-in-d2 flex flex-col max-h-[380px] overflow-hidden">
+                <h2 class="text-base font-bold mb-2 flex items-center gap-2 flex-shrink-0">
                     <span class="text-lg">✓</span> PQC Improvement Tasks
                 </h2>
-                <ul class="text-sm space-y-3 mt-4 text-slate-700">
-                    <li class="flex items-start gap-4 p-2 rounded-lg hover:bg-slate-100 transition">
-                        <input type="checkbox"
-                            class="mt-1 accent-indigo-500 w-4 h-4 rounded border-slate-300 bg-slate-100 shadow-sm cursor-pointer"
-                            checked disabled>
-                        <span>Upgrade perimeter Gateways to <strong class="text-emerald-600">ML-KEM-768</strong> hybrid
-                            key exchange.</span>
-                    </li>
-                    <li class="flex items-start gap-4 p-2 rounded-lg hover:bg-slate-100 transition">
-                        <input type="checkbox"
-                            class="mt-1 accent-indigo-500 w-4 h-4 rounded border-slate-300 bg-slate-100 shadow-sm cursor-pointer">
-                        <span>Rotate 2048-bit RSA Roots to <strong class="text-amber-600">ML-DSA-65</strong>
-                            certificates.</span>
-                    </li>
-                    <li class="flex items-start gap-4 p-2 rounded-lg hover:bg-slate-100 transition">
-                        <input type="checkbox"
-                            class="mt-1 accent-indigo-500 w-4 h-4 rounded border-slate-300 bg-slate-100 shadow-sm cursor-pointer">
-                        <span>Decommission all active <strong class="text-red-600">TLSv1.2</strong> internal service
-                            endpoints.</span>
-                    </li>
-                    <li class="flex items-start gap-4 p-2 rounded-lg hover:bg-slate-100 transition">
-                        <input type="checkbox"
-                            class="mt-1 accent-indigo-500 w-4 h-4 rounded border-slate-300 bg-slate-100 shadow-sm cursor-pointer">
-                        <span>Verify <strong class="text-emerald-600">AES-256-GCM</strong> compliance on internal
-                            databases.</span>
-                    </li>
-                </ul>
+                <p class="text-[11px] pnb-text-muted mb-3 flex-shrink-0">Generated from this scan's findings</p>
+                <!-- Task count is data-driven and unbounded, so the body scrolls
+                     internally instead of stretching the whole grid row (which
+                     would leave the Posture donut / Heatmap cards over-tall). -->
+                <div class="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2"
+                    style="scrollbar-width: thin; scrollbar-color: var(--pnb-border) transparent;">
+                    <div id="scoreBreakdownMini" class="space-y-2 mb-4 pb-4" style="border-bottom: 1px solid var(--pnb-border);"></div>
+                    <ul id="improvementTasks" class="text-sm space-y-3 pnb-text">
+                        <li class="pnb-text-muted text-xs">Computing…</li>
+                    </ul>
+                </div>
             </section>
         </div>
 
         <!-- Row 1.5: HNDL Threat Panel -->
         <section class="panel p-6 fade-in fade-in-d2">
-            <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+            <h2 class="text-base font-bold mb-1 flex items-center gap-2">
                 <span class="text-lg">🕵️</span> Harvest Now, Decrypt Later (HNDL) Threat Vector
             </h2>
+            <p class="text-[11px] pnb-text-muted mb-4">Multiplier = how much a service's data is worth capturing and
+                storing today for future decryption once quantum computing matures (1.0x = standard HTTPS baseline,
+                up to 2.0x for VPN/authentication/financial-API services carrying long-lived sensitive data).</p>
             <div class="overflow-auto max-h-[250px]">
-                <table class="w-full text-sm">
+                <table class="pnb-table w-full text-sm">
                     <thead>
-                        <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-300/50">
-                            <th class="text-left py-2 pr-4 font-bold">Hostname</th>
-                            <th class="text-left py-2 pr-4 font-bold">Service Type</th>
-                            <th class="text-center py-2 pr-4 font-bold">Multiplier</th>
-                            <th class="text-center py-2 font-bold">Risk Level</th>
+                        <tr>
+                            <th>Hostname</th>
+                            <th>Service Type</th>
+                            <th class="text-center">Multiplier</th>
+                            <th class="text-center">Risk Level</th>
                         </tr>
                     </thead>
                     <tbody id="hndlTableBody">
                         <tr>
-                            <td colspan="4" class="text-center py-8 text-slate-400">Initializing vectors…</td>
+                            <td colspan="4" class="text-center py-8 pnb-text-muted">Initializing vectors…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -286,23 +582,23 @@
                 <span class="text-lg">⚠️</span> Scan Failures Report
             </h2>
             <div class="overflow-auto max-h-[350px]">
-                <table class="w-full text-sm">
+                <table class="pnb-table w-full text-sm">
                     <thead>
-                        <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-300/50">
-                            <th class="text-left py-2 pr-4 font-bold">Hostname</th>
-                            <th class="text-left py-2 pr-4 font-bold">Failure Category</th>
-                            <th class="text-left py-2 pr-4 font-bold">Reason</th>
-                            <th class="text-center py-2 font-bold">Attempts</th>
+                        <tr>
+                            <th>Hostname</th>
+                            <th>Failure Category</th>
+                            <th>Reason</th>
+                            <th class="text-center">Attempts</th>
                         </tr>
                     </thead>
                     <tbody id="failuresTableBody">
                         <tr>
-                            <td colspan="4" class="text-center py-8 text-slate-400">Loading failures…</td>
+                            <td colspan="4" class="text-center py-8 pnb-text-muted">Loading failures…</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="mt-3 text-xs text-slate-500">
+            <div class="mt-3 text-xs pnb-text-muted">
                 <span id="failuresSummary">Total Failures: 0</span>
             </div>
         </section>
@@ -313,7 +609,7 @@
                     <span class="text-lg">🛠️</span> Cryptographic Bill of Materials (CBOM)
                 </div>
                 <input type="text" id="cbomSearch" oninput="renderCbom()" placeholder="Search domain/IoC..."
-                    class="bg-slate-100 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-700 w-48 focus:outline-none focus:border-indigo-500 transition">
+                    class="pnb-input rounded-lg px-3 py-1.5 text-xs w-48 transition">
             </h2>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Cipher Suite Bar Chart -->
@@ -326,10 +622,10 @@
                 </div>
                 <!-- Top CAs List -->
                 <div class="relative flex flex-col h-[250px]">
-                    <h3
-                        class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 ml-2 border-b border-slate-700/50 pb-2">
+                    <h3 class="text-xs font-bold uppercase tracking-wider pnb-text-muted mb-3 ml-2 pb-2"
+                        style="border-bottom: 1px solid var(--pnb-border);">
                         Top Issued CAs</h3>
-                    <ul id="caList" class="flex-1 overflow-y-auto space-y-2 pr-2 text-sm text-slate-400">
+                    <ul id="caList" class="flex-1 overflow-y-auto space-y-2 pr-2 text-sm pnb-text-muted">
                         <!-- Populated by JS -->
                     </ul>
                 </div>
@@ -339,130 +635,146 @@
         <!-- Row 3: Asset Discovery -->
         <section class="panel p-6 fade-in fade-in-d3">
             <!-- Header Controls -->
-            <div
-                class="flex flex-col md:flex-row md:items-center justify-between mb-4 pb-4 border-b border-slate-700/50 gap-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between mb-4 pb-4 gap-4"
+                style="border-bottom: 1px solid var(--pnb-border);">
                 <div class="flex items-center gap-4 w-full md:w-auto">
                     <h2 class="text-base font-bold flex items-center gap-2 whitespace-nowrap">
                         <span class="text-lg">📋</span> Asset Inventory
                     </h2>
                     <input type="text" id="assetSearch" oninput="renderAssetTable()"
                         placeholder="Search URL, IPv4, Cert status..."
-                        class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 w-full focus:outline-none focus:border-indigo-500 transition shadow-inner">
+                        class="pnb-input rounded-lg px-3 py-1.5 text-xs w-full transition shadow-inner">
                 </div>
                 <div class="flex gap-2">
                     <button id="btnScanAll" onclick="triggerScanAll()"
-                        class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg shadow-indigo-500/20 whitespace-nowrap"><span
-                            class="mr-1">▶</span> Scan All</button>
-                    <button onclick="promptAddAsset()"
-                        class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap">+
-                        Add Asset</button>
+                        class="pnb-btn-primary px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-lg whitespace-nowrap"><span
+                            class="mr-1">▶</span> Rescan This Domain</button>
                 </div>
             </div>
 
             <!-- Contextual Tabs -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
-                <div
-                    class="flex overflow-x-auto gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700/30 w-max shrink-0">
+                <div class="flex overflow-x-auto gap-1 p-1 rounded-lg w-max shrink-0"
+                    style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
                     <button onclick="switchAssetTab('domains')" id="tabDomains"
-                        class="px-4 py-1.5 rounded-md bg-indigo-500/20 text-indigo-300 text-[11px] font-bold border border-indigo-500/30 transition shadow-sm whitespace-nowrap">Domains</button>
+                        class="pnb-tab-active px-4 py-1.5 rounded-md text-[11px] font-bold border transition shadow-sm whitespace-nowrap">Domains</button>
                     <button onclick="switchAssetTab('ssl')" id="tabSsl"
-                        class="px-4 py-1.5 rounded-md hover:bg-slate-800 text-slate-400 text-[11px] font-bold border border-transparent transition whitespace-nowrap">SSL
+                        class="pnb-tab-inactive px-4 py-1.5 rounded-md text-[11px] font-bold border transition whitespace-nowrap">SSL
                         Certs</button>
                     <button onclick="switchAssetTab('ip')" id="tabIp"
-                        class="px-4 py-1.5 rounded-md hover:bg-slate-800 text-slate-400 text-[11px] font-bold border border-transparent transition whitespace-nowrap">IP/Subnets</button>
+                        class="pnb-tab-inactive px-4 py-1.5 rounded-md text-[11px] font-bold border transition whitespace-nowrap">IP/Subnets</button>
                     <button onclick="switchAssetTab('software')" id="tabSoftware"
-                        class="px-4 py-1.5 rounded-md hover:bg-slate-800 text-slate-400 text-[11px] font-bold border border-transparent transition whitespace-nowrap">Software</button>
-                </div>
-                <!-- Status Pills -->
-                <div
-                    class="flex gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0 bg-slate-900/40 px-3 py-2 rounded-lg border border-slate-700/30">
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-indigo-400 transition"><input
-                            type="radio" name="subTab" value="all" checked onchange="renderAssetTable()"> All</label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-emerald-400 transition"><input
-                            type="radio" name="subTab" value="new" onchange="renderAssetTable()"> New</label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-amber-400 transition"><input
-                            type="radio" name="subTab" value="confirmed" onchange="renderAssetTable()">
-                        Confirmed</label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-400 transition"><input
-                            type="radio" name="subTab" value="false-positive" onchange="renderAssetTable()">
-                        False-Positive</label>
+                        class="pnb-tab-inactive px-4 py-1.5 rounded-md text-[11px] font-bold border transition whitespace-nowrap">Software</button>
                 </div>
                 <!-- Hide Failed TLS Toggle -->
-                <label
-                    class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/40 px-3 py-2 rounded-lg border border-slate-700/30 cursor-pointer hover:text-amber-400 transition">
+                <label class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider pnb-text-muted px-3 py-2 rounded-lg cursor-pointer transition"
+                    style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
                     <input type="checkbox" id="hideFailedTls" onchange="renderAssetTable()"
                         class="w-3.5 h-3.5 accent-amber-500">
                     <span>Hide Failed TLS</span>
                 </label>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead id="assetThead">
-                        <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
-                            <th class="text-left py-2 pr-4">Hostname</th>
-                            <th class="text-left py-2 pr-4">TLS Version</th>
-                            <th class="text-left py-2 pr-4">Cipher Suite</th>
-                            <th class="text-center py-2 pr-4">Quantum Risk</th>
-                            <th class="text-center py-2 pr-4">Classification</th>
-                            <th class="text-center py-2">HNDL Level</th>
+            <div class="overflow-x-auto overflow-y-auto max-h-[480px] rounded-lg" style="border: 1px solid var(--pnb-border);">
+                <table class="pnb-table w-full text-sm">
+                    <thead id="assetThead" class="sticky top-0 z-10" style="background: var(--pnb-surface);">
+                        <tr>
+                            <th>Hostname</th>
+                            <th>TLS Version</th>
+                            <th>Cipher Suite</th>
+                            <th class="text-center">Quantum Risk</th>
+                            <th class="text-center">Classification</th>
+                            <th class="text-center">HNDL Level</th>
                         </tr>
                     </thead>
                     <tbody id="assetTableBody">
                         <tr>
-                            <td colspan="6" class="text-center py-8 text-slate-600">Loading…</td>
+                            <td colspan="6" class="text-center py-8 pnb-text-muted">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </section>
 
+        <!-- Row 2.5: Migration Priority Matrix -->
+        <section class="panel p-6 fade-in fade-in-d3 h-[420px] flex flex-col">
+            <h2 class="text-base font-bold mb-1 flex items-center gap-2">
+                <span class="text-lg">🎯</span> Migration Priority Matrix
+            </h2>
+            <p class="text-[11px] pnb-text-muted mb-3">
+                Each dot is one host, plotted by quantum risk score (x-axis) against HNDL harvest value (y-axis) —
+                how attractive that service's traffic is to capture today and decrypt once quantum computing
+                matures. Top-right = highest risk AND highest harvest value: migrate these first. Click a dot for
+                full detail.
+            </p>
+            <div class="relative flex-1 w-full">
+                <canvas id="priorityMatrix"></canvas>
+            </div>
+        </section>
+
         <!-- Row 3: Attack Surface Graph -->
         <section class="panel p-6 fade-in fade-in-d4 h-[750px] flex flex-col">
-            <h2 class="text-base font-bold mb-4 flex items-center gap-2">
+            <h2 class="text-base font-bold mb-1 flex items-center gap-2">
                 <span class="text-lg">🌐</span> Attack Surface Graph
             </h2>
-            <div id="graphContainer"
-                class="flex-1 w-full rounded-xl bg-slate-950/50 border border-slate-800 relative z-0 overflow-hidden">
+            <p class="text-[11px] pnb-text-muted mb-3">
+                Diamond nodes = an IP address shared by more than one host (shared backend infrastructure). Node
+                color = risk classification. Node size = HNDL harvest value. Thick red border = a real certificate
+                problem (expired, self-signed, or hostname mismatch). Click any host for full detail.
+            </p>
+            <!-- This container stays a dark canvas (literal colors, not
+                 Tailwind slate classes) rather than the page's light card
+                 surface: graph_viewer.js draws node labels in light text
+                 with a dark text-outline, so a light background here would
+                 make every label illegible. -->
+            <div id="graphContainer" class="flex-1 w-full rounded-xl relative z-0 overflow-hidden"
+                style="background: rgba(2,6,23,.5); border: 1px solid #1e293b;">
             </div>
         </section>
     </main>
 
     <!-- PQC Asset Drill-Down Modal -->
     <div id="assetModal"
-        class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 transition-opacity">
-        <div
-            class="bg-slate-900 border border-indigo-500/30 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(99,102,241,0.1)] fade-in">
+        class="fixed inset-0 z-50 hidden backdrop-blur-sm flex items-center justify-center p-4 transition-opacity"
+        style="background: rgba(11,11,11,.55);">
+        <div class="rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto fade-in"
+            style="background: var(--pnb-surface); color: var(--pnb-ink); border: 1px solid var(--pnb-border); box-shadow: 0 20px 60px rgba(0,0,0,.4);">
             <!-- Header -->
-            <div
-                class="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-800/20 sticky top-0 z-10 backdrop-blur-md">
+            <div class="flex justify-between items-center p-6 sticky top-0 z-10 backdrop-blur-md"
+                style="border-bottom: 1px solid var(--pnb-border); background: var(--pnb-surface-alt);">
                 <div>
-                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                        <span class="text-indigo-400">🛡️ Asset Details:</span>
+                    <h2 class="text-xl font-bold pnb-text flex items-center gap-2">
+                        <span style="color: var(--pnb-maroon);">🛡️ Asset Details:</span>
                         <span id="modalTitleHost" class="font-mono">...</span>
                     </h2>
-                    <p class="text-sm text-slate-400 mt-1">Overall Quantum Risk Score: <strong id="modalTitleScore"
-                            class="text-amber-400">0</strong>/100</p>
+                    <p class="text-sm pnb-text-muted mt-1">Overall Quantum Risk Score: <strong id="modalTitleScore"
+                            style="color: var(--pnb-maroon);">0</strong>/100</p>
                 </div>
-                <button onclick="closeAssetModal()"
-                    class="text-slate-400 hover:text-white transition text-3xl font-light">&times;</button>
+                <div class="flex items-center gap-3">
+                    <button id="modalDownloadPdfBtn" onclick="downloadHostPdf()" type="button"
+                        title="Download this host's remediation findings as a PDF"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                        style="background:#F0C040; color:#4E0B11; border:1px solid #D4A017;">
+                        📄 Download Remediation PDF
+                    </button>
+                    <button onclick="closeAssetModal()" class="pnb-modal-close transition text-3xl font-light">&times;</button>
+                </div>
             </div>
 
             <!-- Body -->
             <div class="p-6 space-y-8" id="modalBody">
                 <div id="modalLoading" class="text-center py-12">
-                    <div
-                        class="inline-block w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4">
+                    <div class="inline-block w-8 h-8 border-2 rounded-full animate-spin mb-4"
+                        style="border-color: var(--pnb-maroon); border-top-color: transparent;">
                     </div>
-                    <p class="text-slate-500 text-sm">Fetching algorithmic intelligence...</p>
+                    <p class="pnb-text-muted text-sm">Fetching algorithmic intelligence...</p>
                 </div>
 
                 <div id="modalContent" class="hidden grid grid-cols-1 md:grid-cols-2 gap-8">
                     <!-- Left Column -->
                     <div class="space-y-6">
                         <!-- 1. Score Breakdown -->
-                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                            <h3
-                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                        <section class="p-5 rounded-xl" style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                            <h3 class="pnb-h3 mb-4 pb-2" style="border-bottom: 1px solid var(--pnb-border);">
                                 Score Breakdown</h3>
                             <div class="space-y-4" id="scoreBars">
                                 <!-- populated by JS -->
@@ -470,11 +782,10 @@
                         </section>
 
                         <!-- 3. Quantum Threat Explanation -->
-                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                            <h3
-                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                        <section class="p-5 rounded-xl" style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                            <h3 class="pnb-h3 mb-4 pb-2" style="border-bottom: 1px solid var(--pnb-border);">
                                 Quantum Threat Explanation</h3>
-                            <p class="text-sm text-slate-400 leading-relaxed">
+                            <p class="text-sm pnb-text-2 leading-relaxed">
                                 This asset depends on classical cryptographic primitives that are mathematically
                                 vulnerable to attacks from cryptographically relevant quantum computers (CRQC).
                                 Specifically, primitives relying on integer factorization (e.g., RSA) or discrete
@@ -491,36 +802,60 @@
                     <!-- Right Column -->
                     <div class="space-y-6">
                         <!-- 2. Cryptographic Configuration -->
-                        <section class="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                            <h3
-                                class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-700 pb-2">
+                        <section class="p-5 rounded-xl" style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                            <h3 class="pnb-h3 mb-4 pb-2" style="border-bottom: 1px solid var(--pnb-border);">
                                 Cryptographic Configuration</h3>
                             <div class="space-y-3 text-sm">
-                                <div
-                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
-                                    <span class="text-slate-500 font-medium">TLS Version</span>
-                                    <span id="modalTlsVer" class="font-mono text-indigo-300"></span>
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">TLS Version</span>
+                                    <span id="modalTlsVer" class="font-mono pnb-text-2"></span>
                                 </div>
-                                <div
-                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
-                                    <span class="text-slate-500 font-medium">Cipher Suite</span>
-                                    <span id="modalCipher" class="font-mono text-indigo-300 truncate max-w-[250px]"
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Cipher Suite</span>
+                                    <span class="text-right">
+                                        <span id="modalCipher" class="font-mono pnb-text-2 truncate max-w-[250px] block"
+                                            title=""></span>
+                                        <span id="modalCipherPlain" class="text-[11px] pnb-text-muted"></span>
+                                    </span>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Key Exchange</span>
+                                    <span id="modalKeyEx" class="font-mono pnb-text-2 truncate max-w-[250px]"
                                         title=""></span>
                                 </div>
-                                <div
-                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
-                                    <span class="text-slate-500 font-medium">Key Exchange</span>
-                                    <span id="modalKeyEx" class="font-mono text-indigo-300 truncate max-w-[250px]"
-                                        title=""></span>
-                                </div>
-                                <div
-                                    class="flex flex-col sm:flex-row sm:justify-between border-b border-slate-700/30 pb-2">
-                                    <span class="text-slate-500 font-medium">Signature Algorithm</span>
-                                    <span id="modalSigAlg" class="font-mono text-indigo-300"></span>
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Signature Algorithm</span>
+                                    <span id="modalSigAlg" class="font-mono pnb-text-2"></span>
                                 </div>
                                 <div class="flex flex-col sm:flex-row sm:justify-between">
-                                    <span class="text-slate-500 font-medium">Key Size</span>
-                                    <span id="modalKeySize" class="font-mono text-indigo-300"></span>
+                                    <span class="pnb-text-muted font-medium">Key Size</span>
+                                    <span id="modalKeySize" class="font-mono pnb-text-2"></span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 2b. Certificate Validation — real findings from the
+                             DER cert (hostname match, expiry, self-signed),
+                             not just the quantum-risk score. -->
+                        <section class="p-5 rounded-xl" style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                            <h3 class="pnb-h3 mb-4 pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                Certificate Validation</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Hostname Match</span>
+                                    <span id="modalHostnameMatch" class="font-mono"></span>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Expiry</span>
+                                    <span id="modalExpiry" class="font-mono"></span>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:justify-between pb-2" style="border-bottom: 1px solid var(--pnb-border);">
+                                    <span class="pnb-text-muted font-medium">Trust Chain</span>
+                                    <span id="modalSelfSigned" class="font-mono"></span>
+                                </div>
+                                <div class="flex flex-col sm:flex-row sm:justify-between">
+                                    <span class="pnb-text-muted font-medium">Issuer</span>
+                                    <span id="modalIssuer" class="font-mono pnb-text-2 text-xs truncate max-w-[250px]" title=""></span>
                                 </div>
                             </div>
                         </section>
@@ -528,12 +863,12 @@
                         <!-- 4. PQC Migration Recommendations -->
                         <section class="bg-emerald-900/10 p-5 rounded-xl border border-emerald-500/20">
                             <h3
-                                class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-4 border-b border-emerald-500/20 pb-2 flex items-center gap-2">
+                                class="text-xs font-bold uppercase tracking-wider text-emerald-700 mb-4 border-b border-emerald-500/20 pb-2 flex items-center gap-2">
                                 <span>🚀</span> Recommended PQC Migration
                             </h3>
-                            <p class="text-xs text-slate-400 mb-3">Transition to NIST-approved Post-Quantum Cryptography
+                            <p class="text-xs pnb-text-2 mb-3">Transition to NIST-approved Post-Quantum Cryptography
                                 algorithms:</p>
-                            <ul class="text-sm text-emerald-200/80 space-y-2 list-none" id="modalPqc">
+                            <ul class="text-sm text-emerald-800 space-y-2 list-none" id="modalPqc">
                                 <!-- populated by JS -->
                             </ul>
                         </section>
@@ -544,7 +879,7 @@
     </div>
 
     <!-- Footer -->
-    <footer class="relative z-10 text-center py-6 text-[11px] text-slate-500/50">
+    <footer class="relative z-10 text-center py-6 text-[11px] pnb-shell-text-muted">
         Quantum Proof System Scanner v0.2
     </footer>
 
@@ -555,34 +890,64 @@
         document.getElementById('headerScanId').textContent = scanId;
 
         /* ── Risk badge helper ─────────────────────────────── */
+        // Single canonical risk vocabulary, matching analysis/quantum_risk_engine.py's
+        // get_risk_label() exactly — the same four labels the backend returns as
+        // risk_label on every quantum-risk result and in the JSON export. This
+        // used to be reimplemented independently in three places (this file's own
+        // "Classification" thresholds, the heatmap, and risk_chart.js) with three
+        // different score cutoffs, so the same asset could show a different
+        // verdict in the table than in the exported JSON. Now there is exactly
+        // one source of truth: the backend's risk_label, used everywhere.
+        const RISK_ORDER = ['Quantum Safe', 'Transitioning', 'Quantum Vulnerable', 'Critical'];
+        // Solid hex equivalents of the same four colors, for contexts (the
+        // priority matrix's Chart.js points) that need a plain color value
+        // rather than a Tailwind class string.
+        const RISK_LABEL_COLORS_JS = {
+            'Quantum Safe': '#34d399',
+            'Transitioning': '#fbbf24',
+            'Quantum Vulnerable': '#fb923c',
+            'Critical': '#f87171',
+        };
         function riskBadge(label, extra = '') {
+            // Text shades darkened from the old dark-theme "-400" tokens to
+            // "-700"/"-800" (Tailwind's own light-mode badge convention:
+            // light tint fill + dark same-hue text) now that these badges
+            // sit on the light .pnb-card/.pnb-table surface, not a dark one
+            // — "-400" text on a barely-tinted near-white fill was left
+            // over from before the theme migration and read as low-contrast.
             const colors = {
-                'critical': 'bg-red-500/15 text-red-400 border-red-500/30',
-                'high': 'bg-orange-500/15 text-orange-400 border-orange-500/30',
-                'medium': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-                'low': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-                'quantum vulnerable': 'bg-red-500/15 text-red-400 border-red-500/30',
-                'transitioning': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-                'quantum safe': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+                'critical': 'bg-red-100 text-red-700 border-red-300',
+                'quantum vulnerable': 'bg-orange-100 text-orange-700 border-orange-300',
+                'transitioning': 'bg-amber-100 text-amber-800 border-amber-300',
+                'quantum safe': 'bg-emerald-100 text-emerald-700 border-emerald-300',
+                'high': 'bg-orange-100 text-orange-700 border-orange-300',
+                'medium': 'bg-amber-100 text-amber-800 border-amber-300',
+                'low': 'bg-emerald-100 text-emerald-700 border-emerald-300',
             };
-            const cls = colors[(label || '').toLowerCase()] || 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+            const cls = colors[(label || '').toLowerCase()] || 'bg-slate-100 text-slate-700 border-slate-300';
             return `<span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border ${cls}">${label}${extra}</span>`;
         }
 
         /* ── Data holders ──────────────────────────────────── */
         let tlsData = [], qrData = [], hndlData = [], algoData = [], domain = '';
+        let failuresCache = { total_failures: 0, failures: [] };
 
         /* ── Fetch all data in parallel ────────────────────── */
         async function loadDashboard() {
             try {
                 console.log(`[Dashboard] Loading scan ${scanId}...`);
 
-                const [statusRes, tlsRes, qrRes, hndlRes, algoRes] = await Promise.all([
+                // The scoring model is fetched alongside the scan data so
+                // bands, tiers and weights are available before anything is
+                // rendered from them.
+                const [statusRes, tlsRes, qrRes, hndlRes, algoRes, failuresRes] = await Promise.all([
                     fetch(`/scan/${scanId}`),
                     fetch(`/scan/${scanId}/tls`),
                     fetch(`/scan/${scanId}/quantum-risk`),
                     fetch(`/scan/${scanId}/hndl`),
-                    fetch(`/scan/${scanId}/algorithm-analysis`)
+                    fetch(`/scan/${scanId}/algorithm-analysis`),
+                    fetch(`/scan/${scanId}/failures`),
+                    loadScoringModel(),
                 ]);
 
                 // Check response status codes
@@ -591,14 +956,16 @@
                 if (!qrRes.ok) console.error(`[Dashboard] Quantum Risk API failed: ${qrRes.status}`);
                 if (!hndlRes.ok) console.error(`[Dashboard] HNDL API failed: ${hndlRes.status}`);
                 if (!algoRes.ok) console.error(`[Dashboard] Algorithm API failed: ${algoRes.status}`);
+                if (!failuresRes.ok) console.error(`[Dashboard] Failures API failed: ${failuresRes.status}`);
 
                 const statusData = await statusRes.json();
                 const tlsJson = await tlsRes.json();
                 const qrJson = await qrRes.json();
                 const hndlJson = await hndlRes.json();
                 const algoJson = await algoRes.json();
+                failuresCache = failuresRes.ok ? await failuresRes.json() : { total_failures: 0, failures: [] };
 
-                console.log('[Dashboard] API Responses:', { statusData, tlsJson, qrJson, hndlJson, algoJson });
+                console.log('[Dashboard] API Responses:', { statusData, tlsJson, qrJson, hndlJson, algoJson, failuresCache });
 
                 domain = statusData.domain || '';
                 tlsData = tlsJson.results || [];
@@ -611,27 +978,69 @@
                 // ── Header
                 document.getElementById('headerDomain').textContent = domain;
                 document.getElementById('statAssets').textContent = tlsData.length || '0';
+                const totalAttempted = tlsData.length + (failuresCache?.total_failures || 0);
+                document.getElementById('statAssetsSub').textContent = totalAttempted > tlsData.length
+                    ? `of ${totalAttempted} discovered (${failuresCache.total_failures} could not be reached)`
+                    : 'all discovered hosts reachable';
 
-                // Enterprise Cyber Rating & Posture Tier
+                const rescanBtnEl = document.getElementById('rescanBtn');
+                if (domain) {
+                    rescanBtnEl.disabled = false;
+                    rescanBtnEl.title = `Run a fresh scan of ${domain}`;
+                }
+
+                // ── Zero-host scan: say so, and take the report action away.
+                // Leaving Download Report enabled here offered a document
+                // whose every table would be empty and whose rating would
+                // read 0/1000 — unreadable as "we scanned nothing" and
+                // easily mistaken for "this estate is catastrophic".
+                if (tlsData.length === 0) {
+                    const discovered = failuresCache?.total_failures || 0;
+                    document.getElementById('emptyScanText').textContent = discovered > 0
+                        ? `All ${discovered} discovered host(s) for ${domain} were unreachable, so no TLS data could be collected. `
+                        + `Status: ${statusData.status}.`
+                        : `No subdomains resolved for ${domain} — the domain may not exist or has no public DNS records. `
+                        + `Status: ${statusData.status}.`;
+                    document.getElementById('emptyScanBanner').classList.remove('hidden');
+
+                    const dl = document.getElementById('downloadReportBtn');
+                    dl.disabled = true;
+                    dl.title = 'No report available — this scan produced no results';
+                    dl.style.opacity = '.45';
+                    dl.style.cursor = 'not-allowed';
+                }
+
+                // Enterprise Rating & Posture Tier — a 0-1000 rescaling of the
+                // same average risk score used everywhere else
+                // (rating = (100 - avg risk) × 10), with the tier resolved by
+                // ratingAndTier() against the backend's own tier table so
+                // this tile can never disagree with the exported report.
                 let avgRisk = 0;
                 let rating = 0;
-                let tier = 'Pending';
-                let tierColor = 'text-slate-400';
 
                 if (qrData && qrData.length > 0) {
                     const validRisks = qrData.filter(r => typeof r.risk_score === 'number').map(r => r.risk_score);
                     if (validRisks.length > 0) {
-                        avgRisk = Math.round(validRisks.reduce((s, r) => s + r, 0) / validRisks.length);
-                        // Map 0-100 risk score to 0-1000 rating (where lower risk = higher rating)
-                        rating = Math.round((100 - avgRisk) * 10);
-
-                        if (rating < 400) { tier = 'Legacy'; tierColor = 'text-red-500'; }
-                        else if (rating >= 700) { tier = 'Elite-PQC'; tierColor = 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]'; }
-                        else { tier = 'Standard'; tierColor = 'text-amber-400'; }
+                        // The rating is derived from the UNROUNDED mean and the
+                        // displayed average is rounded separately — exactly what
+                        // summarize_fleet() does. Rounding first and rating the
+                        // rounded value shifted this tile by up to 5 points
+                        // against the same scan's report, export and analytics
+                        // row (e.g. mean 76.37 → 236 here vs 240 there).
+                        const meanRisk = validRisks.reduce((s, r) => s + r, 0) / validRisks.length;
+                        avgRisk = Math.round(meanRisk);
+                        const rt = ratingAndTier(meanRisk);
+                        rating = rt.rating;
 
                         document.getElementById('statCyberRating').textContent = rating;
-                        document.getElementById('statTier').textContent = tier;
-                        document.getElementById('statTier').className = `text-2xl font-extrabold mt-1 ${tierColor}`;
+                        const tierEl = document.getElementById('statTier');
+                        tierEl.textContent = rt.tier;
+                        tierEl.className = 'text-2xl font-extrabold mt-1';
+                        tierEl.style.color = rt.colorHex;
+                        const tierDef = SCORING_MODEL?.posture_tiers?.find(t => t.tier === rt.tier);
+                        tierEl.title = tierDef
+                            ? `${rt.tier}: rating ${tierDef.min_rating}-${tierDef.max_rating} (average risk up to ${tierDef.max_avg_risk}).`
+                            : rt.tier;
                     } else {
                         document.getElementById('statCyberRating').textContent = '0';
                         document.getElementById('statTier').textContent = 'N/A';
@@ -641,43 +1050,465 @@
                     document.getElementById('statTier').textContent = 'N/A';
                 }
 
-                // Critical Risk Assets Calculation
-                const critAssets = qrData && qrData.length > 0 ?
-                    qrData.filter(r => r.risk_score >= 50).length : 0;
+                // Vulnerable/Critical count — now the SAME field (risk_label)
+                // used by the Classification column and the heatmap, instead
+                // of a separately-thresholded count that could disagree with
+                // both of them for the same asset.
+                const critAssets = qrData.filter(r => r.risk_label === 'Quantum Vulnerable' || r.risk_label === 'Critical').length;
                 document.getElementById('statCritRisk').textContent = critAssets;
 
                 // ── Render sections
+                renderExecSummary(avgRisk, critAssets);
                 renderAssetTable();
                 renderHndlPanel();
                 renderFailuresTable();
                 try { renderRiskChart(); } catch (e) { console.error('Risk Donut Error:', e); }
+                try { renderPriorityMatrix(); } catch (e) { console.error('Priority Matrix Error:', e); }
                 try { renderHeatmap(); } catch (e) { console.error('Heatmap Error:', e); }
                 try { renderCbom(); } catch (e) { console.error('CBOM Error:', e); }
                 try { renderGraph(); } catch (e) { console.error('Cytoscape Error:', e); }
+                try { renderImprovementTasks(); } catch (e) { console.error('Improvement Tasks Error:', e); }
+                try { renderHndlClockContext(); } catch (e) { console.error('HNDL Clock Error:', e); }
+                try { renderMethodology(); } catch (e) { console.error('Methodology Error:', e); }
             } catch (err) {
                 console.error('Dashboard load error:', err);
             }
         }
 
         /* ── Header Controls Actions ───────────────────────── */
-        function triggerScanAll() {
-            const btn = document.getElementById('btnScanAll');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = 'Scanning <span class="animate-pulse">...</span>';
-            btn.disabled = true;
-            btn.classList.add('opacity-70');
-            setTimeout(() => {
-                btn.innerHTML = originalHTML;
-                btn.disabled = false;
-                btn.classList.remove('opacity-70');
-                showToast(`Successfully evaluated ${tlsData.length} cryptographic assets with ZERO net-new vulnerabilities.`, 'success');
-            }, 1800);
+        // Real rescan — same endpoint and flow as the header Rescan button.
+        // The old version of this button faked an 1800ms "scan" with no
+        // network call and a hardcoded "ZERO net-new vulnerabilities" toast
+        // regardless of what was actually found.
+        async function triggerScanAll() {
+            document.getElementById('rescanBtn').click();
         }
 
-        function promptAddAsset() {
-            const asset = prompt("🔍 Enter a specific Subdomain, IP, or CIDR block to add to the discovery scope:");
-            if (asset && asset.trim() !== '') {
-                showToast(`Asset '${asset}' accepted. The deep-scan worker has been queued and will process in the background.`, 'info');
+        /* ── HNDL Countdown Clock ───────────────────────────── */
+        // Earliest year of the commonly-cited 2030-2035 CRQC (cryptographically
+        // relevant quantum computer) estimate window — a labeled, sourced
+        // industry estimate, not something computed from this scan. Using the
+        // earliest bound rather than the midpoint is a deliberate cautious
+        // framing: plan migration against the worst case, not the average one.
+        const CRQC_ESTIMATE_DATE = new Date('2030-01-01T00:00:00Z');
+
+        function tickHndlClock() {
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val).padStart(2, '0'); };
+            const diff = Math.max(0, CRQC_ESTIMATE_DATE - new Date());
+            set('clockDays', Math.floor(diff / 86400000));
+            set('clockHours', Math.floor((diff / 3600000) % 24));
+            set('clockMins', Math.floor((diff / 60000) % 60));
+            set('clockSecs', Math.floor((diff / 1000) % 60));
+        }
+        tickHndlClock();
+        setInterval(tickHndlClock, 1000);
+
+        // The one line in the clock panel that uses THIS scan's real data —
+        // everything else in that panel is the sourced industry estimate.
+        function renderHndlClockContext() {
+            const el = document.getElementById('hndlClockContext');
+            if (!el) return;
+            if (!hndlData || hndlData.length === 0) { el.textContent = ''; return; }
+            const exposed = hndlData.filter(h => h.risk === 'high' || h.risk === 'critical').length;
+            el.textContent = exposed > 0
+                ? `${exposed} of ${hndlData.length} scanned assets carry HIGH/CRITICAL harvest value — their traffic captured today stays exposed for this entire countdown.`
+                : `${hndlData.length} assets scanned — none currently flagged HIGH/CRITICAL HNDL risk.`;
+        }
+
+        /* ── Scoring model (fetched from the backend) ────────── */
+        // The risk bands, posture tiers and component weights are NOT
+        // duplicated here. They are served by /scoring-model straight from
+        // analysis/quantum_risk_engine.py, so the dashboard cannot drift out
+        // of sync with the engine that produced the scores — which is
+        // exactly what used to happen: this file carried its own 3-tier
+        // cutoffs and its own 0.30/0.20 migration weights, both of which
+        // silently disagreed with the backend.
+        let SCORING_MODEL = null;
+
+        // Used only until the model arrives (and if the fetch fails), so the
+        // page never renders a blank tier.
+        const FALLBACK_TIERS = [
+            { min_rating: 850, tier: 'Elite-PQC' }, { min_rating: 700, tier: 'Advanced' },
+            { min_rating: 550, tier: 'Standard' }, { min_rating: 400, tier: 'Developing' },
+            { min_rating: 0, tier: 'Legacy' },
+        ];
+
+        // Explicit hex, not Tailwind color classes — these values get set
+        // via element.style.color (see ratingAndTier() callers below), so a
+        // plain hex string is simpler than juggling class names per tier.
+        const TIER_COLORS = {
+            'Elite-PQC': '#34d399', 'Advanced': '#4ade80', 'Standard': '#fbbf24',
+            'Developing': '#fb923c', 'Legacy': '#f87171', 'N/A': '#94a3b8',
+        };
+
+        async function loadScoringModel() {
+            try {
+                const res = await fetch('/scoring-model');
+                if (res.ok) SCORING_MODEL = await res.json();
+            } catch (e) {
+                console.warn('[Dashboard] scoring model unavailable, using fallback tiers', e);
+            }
+        }
+
+        function riskLabelFromScore(score) {
+            const bands = SCORING_MODEL?.risk_bands;
+            if (bands) {
+                const hit = bands.find(b => score >= b.min && score <= b.max);
+                if (hit) return hit.label;
+            }
+            if (score < 30) return 'Quantum Safe';
+            if (score <= 44) return 'Transitioning';
+            if (score <= 80) return 'Quantum Vulnerable';
+            return 'Critical';
+        }
+
+        /**
+         * Port of the engine's get_enterprise_rating() + get_posture_tier().
+         *
+         * Takes the RAW (unrounded) average risk score. The engine rounds only
+         * once, at the very end, and clamps to 0-1000; any caller that rounds
+         * the average before handing it over will produce a rating that
+         * disagrees with the backend for the same assets. The clamp is carried
+         * over too so a hypothetical average outside 0-100 (reachable from the
+         * simulator, not from real data) cannot render an out-of-range rating.
+         *
+         * This formula is duplicated client-side on purpose: the What-If
+         * simulator rates hypothetical asset sets that do not exist on the
+         * server and so cannot be scored by it. Duplicated means it must track
+         * the engine exactly — if quantum_risk_engine.get_enterprise_rating
+         * changes, this changes with it.
+         */
+        function ratingAndTier(avgRisk) {
+            const rating = Math.max(0, Math.min(1000, Math.round((100 - avgRisk) * 10)));
+            const tiers = SCORING_MODEL?.posture_tiers || FALLBACK_TIERS;
+            const hit = tiers.find(t => rating >= t.min_rating) || { tier: 'Legacy' };
+            return { rating, tier: hit.tier, colorHex: TIER_COLORS[hit.tier] || '#f87171' };
+        }
+
+        function componentWeight(key) {
+            const c = SCORING_MODEL?.components?.find(c => c.key === key);
+            return c ? c.weight : 0;
+        }
+
+        /* ── Scoring Methodology panel ──────────────────────── */
+        function renderMethodology() {
+            if (!SCORING_MODEL) return;
+            const m = SCORING_MODEL;
+
+            document.getElementById('methodologySubtitle').textContent =
+                `Model v${m.model_version} — ${m.components.length} weighted components, `
+                + `HNDL amplification, and ${m.floor_rules.length} structural floor rules. `
+                + `Score ${m.score_range.min}-${m.score_range.max} (${m.score_range.direction}). `
+                + `Served live from /scoring-model.`;
+
+            document.getElementById('methodologyWeightTotal').textContent =
+                `— total ${m.weights_total.toFixed(2)}`;
+
+            // Bar length is the weight relative to the largest weight, so the
+            // relative influence of each component is visible at a glance.
+            const maxW = Math.max(...m.components.map(c => c.weight));
+            document.getElementById('methodologyWeights').innerHTML = m.components.map(c => `
+                <div class="flex items-center gap-2">
+                    <span class="font-mono text-[11px] font-bold pnb-text-2 w-10 text-right shrink-0">${c.weight_percent}%</span>
+                    <span class="h-2 rounded-full shrink-0" style="width:${Math.max(6, (c.weight / maxW) * 90)}px; background:#F0C040;"></span>
+                    <span class="text-[11px] pnb-text-2">${c.label}</span>
+                </div>`).join('');
+
+            const bandColors = {
+                'Quantum Safe': '#10b981', 'Transitioning': '#f59e0b',
+                'Quantum Vulnerable': '#f97316', 'Critical': '#ef4444',
+            };
+            document.getElementById('methodologyBands').innerHTML = m.risk_bands.map(b => `
+                <div class="flex items-center gap-2 text-[11px]">
+                    <span class="w-2 h-2 rounded-sm inline-block shrink-0" style="background:${bandColors[b.label] || '#94a3b8'}"></span>
+                    <span class="font-mono pnb-text-muted w-16 shrink-0">${b.min}–${b.max}</span>
+                    <span class="pnb-text-2 font-semibold">${b.label}</span>
+                </div>`).join('');
+
+            document.getElementById('methodologyTiers').innerHTML = m.posture_tiers.map(t => `
+                <div class="flex items-center gap-2 text-[11px]">
+                    <span class="w-2 h-2 rounded-sm inline-block shrink-0" style="background:${TIER_COLORS[t.tier] || '#94a3b8'}"></span>
+                    <span class="font-mono pnb-text-muted w-20 shrink-0">${t.min_rating}–${t.max_rating}</span>
+                    <span class="pnb-text-2 font-semibold">${t.tier}</span>
+                    <span class="pnb-text-muted">avg risk ≤ ${t.max_avg_risk}</span>
+                </div>`).join('');
+
+            const floors = m.floor_rules.map(f =>
+                `<div><span class="font-bold pnb-text">Floor ${f.floor} — ${f.name}:</span> ${f.trigger}. <em class="pnb-text-muted">${f.rationale}</em></div>`
+            ).join('');
+            document.getElementById('methodologyStages').innerHTML = `
+                <div><span class="font-bold pnb-text">1. Composite:</span> weighted sum of the ${m.components.length} components above (weights total ${m.weights_total.toFixed(2)}).</div>
+                <div><span class="font-bold pnb-text">2. Floor gates:</span> <code class="text-[10px]">${m.floor_mapping.formula}</code> — ${m.floor_mapping.note}</div>
+                ${floors}
+                <div><span class="font-bold pnb-text">3. HNDL amplification:</span> <code class="text-[10px]">${m.hndl_amplification.formula}</code>, sensitivity ${m.hndl_amplification.sensitivity}, service multiplier ${m.hndl_amplification.multiplier_range[0]}–${m.hndl_amplification.multiplier_range[1]}. ${m.hndl_amplification.note}</div>
+                <div><span class="font-bold pnb-text">4. Clamp:</span> final score bounded to ${m.score_range.min}–${m.score_range.max}.</div>
+                <div><span class="font-bold pnb-text">Enterprise Rating:</span> <code class="text-[10px]">${m.enterprise_rating.formula}</code>, range ${m.enterprise_rating.range[0]}–${m.enterprise_rating.range[1]}.</div>`;
+
+            // Scale hint under the Posture Tier tile.
+            const scaleEl = document.getElementById('statTierScale');
+            if (scaleEl) {
+                scaleEl.textContent = m.posture_tiers.map(t => t.tier).join(' · ');
+            }
+        }
+
+        document.getElementById('toggleMethodology').addEventListener('click', () => {
+            const body = document.getElementById('methodologyBody');
+            const btn = document.getElementById('toggleMethodology');
+            const hidden = body.classList.toggle('hidden');
+            btn.textContent = hidden ? 'Show details' : 'Hide details';
+        });
+
+        function bucketCounts(items) {
+            const counts = { 'Quantum Safe': 0, 'Transitioning': 0, 'Quantum Vulnerable': 0, 'Critical': 0 };
+            items.forEach(it => { counts[riskLabelFromScore(it.risk_score)]++; });
+            return counts;
+        }
+
+        function renderBucketRow(containerId, counts) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            const colors = { 'Quantum Safe': '#10b981', 'Transitioning': '#f59e0b', 'Quantum Vulnerable': '#f97316', 'Critical': '#ef4444' };
+            el.innerHTML = Object.entries(counts).map(([label, n]) => `
+                <div class="flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm inline-block" style="background:${colors[label]}"></span>${label}</span>
+                    <span class="font-bold">${n}</span>
+                </div>`).join('');
+        }
+
+        function simulateMigration(scope) {
+            if (qrData.length === 0) return;
+
+            if (scope === 'reset') {
+                document.getElementById('simResults').classList.add('hidden');
+                document.getElementById('simEmptyState').classList.remove('hidden');
+                document.getElementById('simFootnote').textContent = '';
+                return;
+            }
+
+            const currentAvg = qrData.reduce((s, r) => s + r.risk_score, 0) / qrData.length;
+            const current = ratingAndTier(currentAvg);
+            const currentBuckets = bucketCounts(qrData);
+
+            // Half targets the WORST-scoring half of the fleet, not a
+            // random or alphabetical half — migrate the highest-risk assets
+            // first, same prioritization logic as "Top 5" just wider scope.
+            // Gives a visibly distinct middle step between "Top 5" and
+            // "Everything" instead of "Vulnerable+Critical" landing on
+            // nearly the same result as "Everything" whenever most of the
+            // fleet is already Vulnerable/Critical (the common case).
+            let targets;
+            if (scope === 'top5') {
+                targets = [...qrData].sort((a, b) => b.risk_score - a.risk_score).slice(0, 5);
+            } else if (scope === 'half') {
+                targets = [...qrData].sort((a, b) => b.risk_score - a.risk_score).slice(0, Math.ceil(qrData.length / 2));
+            } else {
+                targets = qrData;
+            }
+            const targetKeys = new Set(targets.map(r => `${r.hostname}:${r.port}`));
+
+            // A real ML-KEM + ML-DSA migration zeroes three components —
+            // key exchange, certificate signature, and the certificate's
+            // public-key strength (a PQC cert has no RSA/EC key left to
+            // measure) — and, because both asymmetric primitives become
+            // quantum-safe, it also lifts the "no PQC anywhere" floor that
+            // is currently holding these assets in the Quantum Vulnerable
+            // band. Subtracting weighted components from the *post-floor*
+            // total, as this used to do, understated the gain badly: the
+            // floor was never removed, so migrating everything still showed
+            // assets pinned near the band bottom.
+            const simulated = qrData.map(r => {
+                if (!targetKeys.has(`${r.hostname}:${r.port}`)) return r;
+                const composite = typeof r.composite_score === 'number' ? r.composite_score : r.risk_score;
+                const removed =
+                    (r.key_exchange_score || 0) * componentWeight('key_exchange') +
+                    (r.signature_score || 0) * componentWeight('signature') +
+                    (r.key_size_penalty || 0) * componentWeight('key_size');
+                const newComposite = Math.max(0, composite - removed);
+                // HNDL amplification recomputes against the lower exposure.
+                const sens = SCORING_MODEL?.hndl_amplification?.sensitivity ?? 0.15;
+                const mult = typeof r.hndl_multiplier === 'number' ? r.hndl_multiplier : 1.0;
+                const uplift = newComposite * Math.max(0, mult - 1) * sens;
+                const newScore = Math.max(0, Math.min(100, Math.round(newComposite + uplift)));
+                return { ...r, risk_score: newScore };
+            });
+
+            const simAvg = simulated.reduce((s, r) => s + r.risk_score, 0) / simulated.length;
+            const projected = ratingAndTier(simAvg);
+            const projBuckets = bucketCounts(simulated);
+
+            document.getElementById('simEmptyState').classList.add('hidden');
+            document.getElementById('simResults').classList.remove('hidden');
+
+            document.getElementById('simCurrentRating').textContent = current.rating;
+            const curTierEl = document.getElementById('simCurrentTier');
+            curTierEl.textContent = current.tier;
+            curTierEl.style.color = current.colorHex;
+
+            document.getElementById('simProjRating').textContent = projected.rating;
+            const projTierEl = document.getElementById('simProjTier');
+            projTierEl.textContent = projected.tier;
+            projTierEl.style.color = projected.colorHex;
+            renderBucketRow('simCurrentBuckets', currentBuckets);
+            renderBucketRow('simProjBuckets', projBuckets);
+
+            const delta = projected.rating - current.rating;
+            document.getElementById('simRatingDelta').textContent = delta > 0 ? `▲ +${delta}` : (delta < 0 ? `▼ ${delta}` : '—');
+
+            const scopeLabel = scope === 'top5' ? `the ${targets.length} highest-risk assets`
+                : scope === 'half' ? `the ${targets.length} highest-risk assets (the worst half of the fleet)`
+                : `all ${targets.length} scanned assets`;
+            const wKex = (componentWeight('key_exchange') * 100).toFixed(0);
+            const wSig = (componentWeight('signature') * 100).toFixed(0);
+            const wKey = (componentWeight('key_size') * 100).toFixed(0);
+            document.getElementById('simFootnote').textContent =
+                `Simulating PQC migration (ML-KEM-768 + ML-DSA-65) for ${scopeLabel}. `
+                + `Zeroes the key-exchange (${wKex}%), signature (${wSig}%) and public-key-strength (${wKey}%) components, `
+                + `lifts the "no PQC anywhere" floor, and recomputes HNDL amplification — using the live weights from `
+                + `/scoring-model against this scan's real per-asset composites. Not a live rescan.`;
+        }
+
+        /* ── Executive Summary ─────────────────────────────── */
+        // One auto-generated paragraph, computed from real aggregates,
+        // ordered by severity — the "read this and you have the gist"
+        // sentence a judge or executive needs before touching a chart.
+        function renderExecSummary(avgRisk, critAssets) {
+            const el = document.getElementById('execSummary');
+            if (tlsData.length === 0) {
+                el.textContent = 'No successful TLS results for this scan yet.';
+                return;
+            }
+
+            const total = tlsData.length;
+            const weakKex = qrData.filter(r => r.key_exchange_score >= 60).length;
+            const expired = tlsData.filter(t => t.is_expired).length;
+            const selfSigned = tlsData.filter(t => t.is_self_signed).length;
+            const mismatched = tlsData.filter(t => t.hostname_mismatch).length;
+            const legacyTls = tlsData.filter(t => t.tls_version === 'TLSv1' || t.tls_version === 'TLSv1.1' || t.tls_version === 'SSLv3').length;
+
+            const parts = [];
+            parts.push(`<strong>${total}</strong> asset${total === 1 ? '' : 's'} scanned, averaging a risk score of <strong>${avgRisk}/100</strong>` +
+                (critAssets > 0 ? ` — <strong class="text-red-600">${critAssets}</strong> classified Quantum Vulnerable or Critical.` : ', none above the Transitioning band.'));
+            if (weakKex > 0) {
+                parts.push(`<strong>${weakKex}</strong> of ${total} rely on classical-only key exchange with no post-quantum protection.`);
+            }
+            if (expired > 0) {
+                parts.push(`<strong class="text-red-600">${expired}</strong> certificate${expired === 1 ? '' : 's'} already expired.`);
+            }
+            if (selfSigned > 0) {
+                parts.push(`<strong>${selfSigned}</strong> self-signed certificate${selfSigned === 1 ? '' : 's'} detected.`);
+            }
+            if (mismatched > 0) {
+                parts.push(`<strong class="text-amber-600">${mismatched}</strong> certificate${mismatched === 1 ? '' : 's'} do${mismatched === 1 ? 'es' : ''} not match ${mismatched === 1 ? 'its' : 'their'} hostname — investigate for misconfiguration.`);
+            }
+            if (legacyTls > 0) {
+                parts.push(`<strong>${legacyTls}</strong> still negotiate TLS 1.1 or earlier.`);
+            }
+            if (failuresCache.total_failures > 0) {
+                parts.push(`<strong>${failuresCache.total_failures}</strong> discovered host${failuresCache.total_failures === 1 ? '' : 's'} could not be reached (see Scan Failures below).`);
+            }
+
+            el.innerHTML = parts.join(' ');
+        }
+
+        /* ── Improvement Tasks (real, computed) ────────────── */
+        // Replaces a static 4-item checklist that was identical on every
+        // scan regardless of domain (verified: no JS ever populated it).
+        // Every line here is conditioned on an actual measurement from
+        // THIS scan's qrData/tlsData and only appears when true.
+        function miniBar(label, avgVal, weight) {
+            // Bar length = the raw component score (0-100, how bad this
+            // factor is). The weight is printed alongside so a reader can
+            // see both how weak the component is AND how much the model
+            // lets it matter — a 100-scoring component at 5% weight is a
+            // very different finding from one at 22%.
+            const pct = Math.min(100, Math.max(0, avgVal));
+            const color = pct > 50 ? 'bg-red-500' : (pct > 20 ? 'bg-amber-500' : 'bg-emerald-500');
+            const weightTxt = weight ? `${(weight * 100).toFixed(0)}% weight` : '';
+            return `
+                <div title="Raw component score ${avgVal.toFixed(0)}/100 (fleet average), weighted at ${weightTxt || 'n/a'}. Contribution to the composite: ${(avgVal * (weight || 0)).toFixed(1)} pts.">
+                    <div class="flex justify-between text-[11px] mb-0.5">
+                        <span class="pnb-text-muted">${label} <span class="pnb-text-muted">· ${weightTxt}</span></span>
+                        <span class="font-mono pnb-text-2">${avgVal.toFixed(0)}/100</span>
+                    </div>
+                    <div class="w-full rounded-full h-1.5" style="background: var(--pnb-border-strong);">
+                        <div class="${color} h-1.5 rounded-full" style="width: ${pct}%"></div>
+                    </div>
+                </div>`;
+        }
+
+        function renderImprovementTasks() {
+            const box = document.getElementById('scoreBreakdownMini');
+            const list = document.getElementById('improvementTasks');
+
+            if (qrData.length === 0) {
+                box.innerHTML = '';
+                list.innerHTML = '<li class="pnb-text-muted text-xs">No quantum-risk data available.</li>';
+                return;
+            }
+
+            const avg = (key) => qrData.reduce((s, r) => s + (r[key] || 0), 0) / qrData.length;
+
+            // All ten weighted components of the model, each mapped to the
+            // API field carrying it and to its weight key, then ordered by
+            // real weighted contribution so the biggest lever is on top.
+            // Previously only four of the ten were shown, which made the
+            // panel look like the whole model when it was less than half.
+            const COMPONENT_VIEW = [
+                { label: 'Key Exchange', field: 'key_exchange_score', key: 'key_exchange' },
+                { label: 'Certificate Signature', field: 'signature_score', key: 'signature' },
+                { label: 'Public Key Strength', field: 'key_size_penalty', key: 'key_size' },
+                { label: 'Forward Secrecy', field: 'forward_secrecy_score', key: 'forward_secrecy' },
+                { label: 'TLS Protocol', field: 'tls_score', key: 'tls_version' },
+                { label: 'Cipher Strength', field: 'cipher_score', key: 'cipher' },
+                { label: 'Certificate Trust', field: 'certificate_trust_score', key: 'certificate_trust' },
+                { label: 'Cipher Mode / AEAD', field: 'cipher_mode_score', key: 'cipher_mode' },
+                { label: 'Hash Strength', field: 'hash_score', key: 'hash' },
+                { label: 'Cert Lifetime Hygiene', field: 'certificate_validity_score', key: 'certificate' },
+            ];
+
+            const rows = COMPONENT_VIEW
+                .map(c => ({ ...c, value: avg(c.field), weight: componentWeight(c.key) }))
+                .sort((a, b) => (b.value * b.weight) - (a.value * a.weight));
+
+            box.innerHTML = rows.map(r => miniBar(r.label, r.value, r.weight)).join('');
+
+            const total = tlsData.length;
+            const weakKex = qrData.filter(r => r.key_exchange_score >= 60).length;
+            const weakSig = qrData.filter(r => r.signature_score >= 60).length;
+            const legacyTls = tlsData.filter(t => t.tls_version === 'TLSv1' || t.tls_version === 'TLSv1.1' || t.tls_version === 'SSLv3').length;
+            const expired = tlsData.filter(t => t.is_expired).length;
+            const expiringSoon = tlsData.filter(t => !t.is_expired && typeof t.days_until_expiry === 'number' && t.days_until_expiry < 30).length;
+            const selfSigned = tlsData.filter(t => t.is_self_signed).length;
+            const mismatched = tlsData.filter(t => t.hostname_mismatch).length;
+
+            const noPfs = qrData.filter(r => (r.forward_secrecy_score || 0) >= 60).length;
+            const weakCipher = qrData.filter(r => (r.cipher_score || 0) >= 40).length;
+            const nonAead = qrData.filter(r => (r.cipher_mode_score || 0) >= 60).length;
+            const weakHash = qrData.filter(r => (r.hash_score || 0) >= 60).length;
+            const longLived = qrData.filter(r => (r.certificate_validity_score || 0) >= 55).length;
+
+            const items = [];
+            if (weakKex > 0) items.push(`Migrate key exchange to ML-KEM-768 (hybrid) — <strong class="text-red-600">${weakKex} of ${total}</strong> assets negotiate classical-only key exchange.`);
+            if (weakSig > 0) items.push(`Migrate certificate signatures to ML-DSA-65 — <strong class="text-amber-600">${weakSig} of ${total}</strong> use classical-only signature algorithms.`);
+            if (noPfs > 0) items.push(`Enable forward secrecy on <strong class="text-red-600">${noPfs}</strong> endpoint${noPfs === 1 ? '' : 's'} — without it, one recovered key decrypts every captured session.`);
+            if (weakHash > 0) items.push(`Replace SHA-1/MD5 hashing on <strong class="text-red-600">${weakHash}</strong> endpoint${weakHash === 1 ? '' : 's'} — collision attacks are practical today, no quantum computer needed.`);
+            if (nonAead > 0) items.push(`Move <strong class="text-amber-600">${nonAead}</strong> endpoint${nonAead === 1 ? '' : 's'} to an AEAD cipher mode (GCM / ChaCha20-Poly1305) — CBC and CTR are padding-oracle prone.`);
+            if (weakCipher > 0) items.push(`Upgrade bulk encryption to AES-256 or ChaCha20 on <strong class="text-amber-600">${weakCipher}</strong> endpoint${weakCipher === 1 ? '' : 's'} — Grover halves symmetric key strength, so AES-128 retains only 64-bit post-quantum security.`);
+            if (legacyTls > 0) items.push(`Decommission <strong class="text-red-600">${legacyTls}</strong> endpoint${legacyTls === 1 ? '' : 's'} still negotiating TLS 1.1 or earlier.`);
+            if (expired > 0) items.push(`Renew <strong class="text-red-600">${expired}</strong> already-expired certificate${expired === 1 ? '' : 's'} immediately.`);
+            if (expiringSoon > 0) items.push(`Renew <strong class="text-amber-600">${expiringSoon}</strong> certificate${expiringSoon === 1 ? '' : 's'} expiring within 30 days.`);
+            if (selfSigned > 0) items.push(`Replace <strong class="text-amber-600">${selfSigned}</strong> self-signed certificate${selfSigned === 1 ? '' : 's'} with CA-issued ones.`);
+            if (mismatched > 0) items.push(`Investigate <strong class="text-amber-600">${mismatched}</strong> hostname/certificate mismatch${mismatched === 1 ? '' : 'es'} — possible shadow IT.`);
+            if (longLived > 0) items.push(`Shorten certificate lifetimes on <strong class="text-amber-600">${longLived}</strong> endpoint${longLived === 1 ? '' : 's'} toward the 398-day CA/Browser Forum maximum — long-lived certs slow any future PQC rotation.`);
+
+            if (items.length === 0) {
+                list.innerHTML = '<li class="text-emerald-600 text-sm font-medium">✓ No immediate action items — this scan found no elevated risk factors.</li>';
+            } else {
+                list.innerHTML = items.map(text => `
+                    <li class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 transition">
+                        <span class="mt-1 w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>
+                        <span>${text}</span>
+                    </li>`).join('');
             }
         }
 
@@ -694,62 +1525,77 @@
 
             CbomCharts.render('cipherChart', 'keyLenChart', filtered);
 
-            // Mock enterprise top CAs to fulfill module coverage gap realistically
-            const cas = {
-                "DigiCert Global Root CA": Math.max(1, Math.floor(filtered.length * 0.45)),
-                "Let's Encrypt Authority X3": Math.max(1, Math.floor(filtered.length * 0.25)),
-                "GlobalSign Root CA": Math.max(1, Math.floor(filtered.length * 0.15)),
-                "Internal Enterprise PKI": Math.max(0, Math.floor(filtered.length * 0.1))
-            };
-            document.getElementById('caList').innerHTML = Object.entries(cas)
-                .sort((a, b) => b[1] - a[1])
-                .map(([ca, count]) => `
-                <li class="flex justify-between border-b border-slate-700/30 pb-1.5 hover:bg-slate-800/50 px-2 rounded transition cursor-help" title="Certificate Authority Issuer">
-                    <span class="truncate">${ca}</span>
-                    <span class="font-bold text-amber-400">${count}</span>
-                </li>
-            `).join('');
+            // Real issuer distribution, computed from each certificate's
+            // actual DER-parsed issuer field. Previously this was a fixed
+            // list of well-known CA brand names split by an arbitrary
+            // 45/25/15/10% of the asset count, with the comment "Mock
+            // enterprise top CAs" — never once read from a real certificate.
+            const caCounts = {};
+            filtered.forEach(tls => {
+                if (!tls.issuer) return;
+                // Issuer strings are full DNs (CN=...,O=...,C=...) — extract
+                // just the CN for a readable label, falling back to O=.
+                const cnMatch = tls.issuer.match(/CN=([^,]+)/);
+                const oMatch = tls.issuer.match(/O=([^,]+)/);
+                const label = (cnMatch ? cnMatch[1] : (oMatch ? oMatch[1] : tls.issuer)).trim();
+                caCounts[label] = (caCounts[label] || 0) + 1;
+            });
+
+            const caEntries = Object.entries(caCounts).sort((a, b) => b[1] - a[1]);
+            const withIssuer = Object.values(caCounts).reduce((s, c) => s + c, 0);
+            const missingIssuer = filtered.length - withIssuer;
+
+            if (caEntries.length === 0) {
+                document.getElementById('caList').innerHTML =
+                    '<li class="pnb-text-muted text-xs italic px-2">No certificate issuer data available for this filter.</li>';
+            } else {
+                document.getElementById('caList').innerHTML = caEntries.map(([ca, count]) => `
+                    <li class="flex justify-between pb-1.5 px-2 rounded transition cursor-help" style="border-bottom: 1px solid var(--pnb-border);" title="${ca}">
+                        <span class="truncate">${ca}</span>
+                        <span class="font-bold" style="color: var(--pnb-maroon);">${count}</span>
+                    </li>
+                `).join('') + (missingIssuer > 0
+                        ? `<li class="flex justify-between px-2 pt-1 pnb-text-muted text-[11px] italic"><span>No cert data (failed handshakes)</span><span>${missingIssuer}</span></li>`
+                        : '');
+            }
         }
 
         /* ── Advanced Heatmap Generation ───────────────────── */
         function renderHeatmap() {
             const heatmap = document.getElementById('riskHeatmap');
 
-            // Map TLS data to risk scores to find the most vulnerable assets
+            // Map TLS data to risk scores to find the most vulnerable assets.
+            // Color driven by qr.risk_label (backend-authoritative), the same
+            // field the Classification column and donut chart use — this used
+            // to recompute its own >70/>=50/>=30 thresholds independently,
+            // which could color a square differently than its own table row.
             const qrMap = {}; qrData.forEach(r => qrMap[r.hostname] = r);
             let heatmapAssets = tlsData.map(tls => {
                 const qr = qrMap[tls.hostname];
                 return {
                     id: tls.id,
                     hostname: tls.hostname,
-                    score: qr ? qr.risk_score : 0
+                    score: qr ? qr.risk_score : 0,
+                    label: qr ? qr.risk_label : 'Quantum Safe',
                 };
             }).sort((a, b) => b.score - a.score); // Sort highest risk first
+
+            const HEATMAP_COLORS = {
+                'Critical': 'bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]',
+                'Quantum Vulnerable': 'bg-orange-500/80 shadow-[0_0_5px_rgba(251,146,60,0.2)]',
+                'Transitioning': 'bg-amber-500/80',
+                'Quantum Safe': 'bg-emerald-500/80',
+            };
 
             let html = '';
             for (let i = 0; i < 25; i++) {
                 if (i < heatmapAssets.length) {
                     const asset = heatmapAssets[i];
-                    let color = 'bg-slate-800';
-                    let label = 'Quantum Safe';
-
-                    if (asset.score > 70) {
-                        color = 'bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]';
-                        label = 'Critical Risk';
-                    } else if (asset.score >= 50) {
-                        color = 'bg-amber-500/80 shadow-[0_0_5px_rgba(245,158,11,0.2)]';
-                        label = 'High Risk';
-                    } else if (asset.score >= 30) {
-                        color = 'bg-indigo-500/80';
-                        label = 'Medium Risk';
-                    } else {
-                        color = 'bg-emerald-500/80';
-                    }
-
-                    // Hover tooltip shows hostname & score, click opens modal directly!
-                    html += `<div onclick="openAssetModal(${asset.id})" class="${color} rounded-[2px] border border-slate-700/50 opacity-80 hover:opacity-100 hover:scale-110 hover:z-10 transition cursor-pointer" title="${asset.hostname}&#10;Score: ${asset.score} (${label})"></div>`;
+                    const color = HEATMAP_COLORS[asset.label];
+                    const bg = color ? '' : 'background: var(--pnb-border-strong);';
+                    html += `<div onclick="openAssetModal(${asset.id})" class="${color || ''} rounded-[2px] opacity-80 hover:opacity-100 hover:scale-110 hover:z-10 transition cursor-pointer" style="border: 1px solid var(--pnb-border); ${bg}" title="${asset.hostname}&#10;Score: ${asset.score} (${asset.label})"></div>`;
                 } else {
-                    html += `<div class="bg-slate-800/20 rounded-[2px] border border-slate-700/10"></div>`;
+                    html += `<div class="rounded-[2px]" style="border: 1px solid var(--pnb-border); background: rgba(11,11,11,.04);"></div>`;
                 }
             }
             heatmap.innerHTML = html;
@@ -760,8 +1606,8 @@
 
         function switchAssetTab(tabName) {
             currentAssetTab = tabName;
-            const activeClass = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30 shadow-sm';
-            const inactiveClass = 'hover:bg-slate-800 text-slate-400 border-transparent';
+            const activeClass = 'pnb-tab-active';
+            const inactiveClass = 'pnb-tab-inactive';
 
             document.getElementById('tabDomains').className = `px-4 py-1.5 rounded-md text-[11px] font-bold transition border whitespace-nowrap ${tabName === 'domains' ? activeClass : inactiveClass}`;
             document.getElementById('tabSsl').className = `px-4 py-1.5 rounded-md text-[11px] font-bold transition border whitespace-nowrap ${tabName === 'ssl' ? activeClass : inactiveClass}`;
@@ -776,20 +1622,10 @@
             const tbody = document.getElementById('assetTableBody');
 
             const searchQuery = (document.getElementById('assetSearch').value || '').toLowerCase();
-            const subTab = document.querySelector('input[name="subTab"]:checked')?.value || 'all';
             const hideFailedTls = document.getElementById('hideFailedTls')?.checked || false;
 
             // Filter logic
             const filteredTls = tlsData.filter(tls => {
-                // Mock SubTab status based on domain length for consistency
-                let isNew = tls.hostname.length % 7 === 0;
-                let isFalsePos = tls.hostname.length % 11 === 0;
-
-                let matchesSubTab = true;
-                if (subTab === 'new') matchesSubTab = isNew && !isFalsePos;
-                else if (subTab === 'false-positive') matchesSubTab = isFalsePos;
-                else if (subTab === 'confirmed') matchesSubTab = !isNew && !isFalsePos;
-
                 // Hide failed TLS results if checkbox is enabled
                 let tlsIsValid = true;
                 if (hideFailedTls) {
@@ -798,51 +1634,52 @@
 
                 let matchesSearch = true;
                 if (searchQuery) {
-                    const str = `${tls.hostname} ${tls.ip || ''} ${tls.tls_version || ''} ${tls.cipher_suite || ''} ${tls.signature_algorithm || ''}`.toLowerCase();
+                    const str = `${tls.hostname} ${tls.ip_address || ''} ${tls.tls_version || ''} ${tls.cipher_suite || ''} ${tls.signature_algorithm || ''}`.toLowerCase();
                     matchesSearch = str.includes(searchQuery);
                 }
-                return matchesSubTab && matchesSearch && tlsIsValid;
+                return matchesSearch && tlsIsValid;
             });
 
             if (filteredTls.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-600">No assets match the current filters</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 pnb-text-muted">No assets match the current filters</td></tr>';
                 return;
             }
 
             // Adjust headers based on tab
             if (currentAssetTab === 'domains') {
                 thead.innerHTML = `
-                    <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
-                        <th class="text-left py-2 pr-4">Hostname</th>
-                        <th class="text-left py-2 pr-4">TLS Version</th>
-                        <th class="text-center py-2 pr-4">Quantum Risk</th>
-                        <th class="text-center py-2 pr-4">Classification</th>
-                        <th class="text-center py-2">HNDL Risk</th>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>TLS Version</th>
+                        <th class="text-center">Quantum Risk</th>
+                        <th class="text-center">Classification</th>
+                        <th class="text-center">HNDL Risk</th>
                     </tr>`;
             } else if (currentAssetTab === 'ip') {
                 thead.innerHTML = `
-                    <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
-                        <th class="text-left py-2 pr-4">Asset Domain</th>
-                        <th class="text-left py-2 pr-4">IP Address</th>
-                        <th class="text-center py-2 pr-4">Port</th>
-                        <th class="text-center py-2">Service Type</th>
+                    <tr>
+                        <th>Asset Domain</th>
+                        <th>IP Address</th>
+                        <th class="text-center">Port</th>
+                        <th class="text-center">Service Type</th>
                     </tr>`;
             } else if (currentAssetTab === 'software') {
                 thead.innerHTML = `
-                    <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
-                        <th class="text-left py-2 pr-4">Network Node</th>
-                        <th class="text-center py-2 pr-4">App/Service Fingerprint</th>
-                        <th class="text-center py-2 pr-4">HNDL Multiplier</th>
-                        <th class="text-center py-2">Exposure Status</th>
+                    <tr>
+                        <th>Network Node</th>
+                        <th class="text-center">App/Service Fingerprint</th>
+                        <th class="text-center">HNDL Multiplier</th>
+                        <th class="text-center">Exposure Status</th>
                     </tr>`;
             } else if (currentAssetTab === 'ssl') {
                 thead.innerHTML = `
-                    <tr class="text-xs uppercase tracking-wider text-slate-500 border-b border-slate-700/50">
-                        <th class="text-left py-2 pr-4">Hostname</th>
-                        <th class="text-left py-2 pr-4">Key Exchange</th>
-                        <th class="text-left py-2 pr-4">Signature Algorithm</th>
-                        <th class="text-center py-2 pr-4">Key Size</th>
-                        <th class="text-center py-2">PQC Readiness</th>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>Key Exchange</th>
+                        <th>Signature Algorithm</th>
+                        <th class="text-center">Key Size</th>
+                        <th class="text-center">Certificate Issues</th>
+                        <th class="text-center">Quantum Risk</th>
                     </tr>`;
             }
 
@@ -856,21 +1693,27 @@
                 const hndl = hndlMap[tls.hostname];
                 const algo = algoMap[tls.hostname] || {};
                 const riskScore = qr ? qr.risk_score : 0;
-
-                // Mathematical Risk Classification (0-100)
-                let classification = 'Unknown';
-                if (riskScore > 70) classification = 'Critical';
-                else if (riskScore >= 50) classification = 'High';
-                else if (riskScore >= 30) classification = 'Medium';
-                else classification = 'Low';
+                // Classification is the backend's own risk_label — the same
+                // field the donut chart, heatmap, and JSON export all use.
+                const classification = qr ? qr.risk_label : 'Unknown';
 
                 const hndlLevel = hndl ? hndl.risk : 'safe';
                 const svc = hndl ? hndl.service : 'Web / HTTPS';
 
+                // Real certificate issues, persisted since the async TLS
+                // rewrite (previously computed then discarded before reaching the DB).
+                const certIssues = [];
+                if (tls.is_expired) certIssues.push('Expired');
+                else if (typeof tls.days_until_expiry === 'number' && tls.days_until_expiry < 30) certIssues.push(`Expires in ${tls.days_until_expiry}d`);
+                if (tls.is_self_signed) certIssues.push('Self-signed');
+                if (tls.hostname_mismatch) certIssues.push('Hostname mismatch');
+                const certWarning = certIssues.length > 0
+                    ? ` <span class="ml-1 text-amber-600" title="${certIssues.join(', ')}">⚠</span>` : '';
+
                 if (currentAssetTab === 'domains') {
                     return `
-                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/80 transition cursor-pointer" onclick="openAssetModal(${tls.id})">
-                        <td class="py-3 pr-4 font-mono text-xs" style="color: #F0C040 !important; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${tls.hostname}</td>
+                    <tr class="transition cursor-pointer" onclick="openAssetModal(${tls.id})">
+                        <td class="py-3 pr-4 font-mono text-xs" style="color: var(--pnb-maroon); font-weight: 800;">${tls.hostname}${certWarning}</td>
                         <td class="py-3 pr-4">${tls.tls_version || '—'}</td>
                         <td class="py-3 pr-4 text-center font-bold">${riskScore}</td>
                         <td class="py-3 pr-4 text-center">${riskBadge(classification)}</td>
@@ -878,18 +1721,18 @@
                     </tr>`;
                 } else if (currentAssetTab === 'ip') {
                     return `
-                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/80 transition cursor-pointer" onclick="openAssetModal(${tls.id})">
-                        <td class="py-3 pr-4 font-mono text-xs" style="color: #F0C040 !important; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${tls.hostname}</td>
-                        <td class="py-3 pr-4 font-mono text-[11px] text-slate-300">10.${(tls.hostname.length * 17) % 255}.${tls.id % 255}.${(tls.id * 3) % 254}</td>
-                        <td class="py-3 pr-4 text-center text-slate-400">${tls.port || 443}</td>
-                        <td class="py-3 text-center text-xs text-slate-300">${svc}</td>
+                    <tr class="transition cursor-pointer" onclick="openAssetModal(${tls.id})">
+                        <td class="py-3 pr-4 font-mono text-xs" style="color: var(--pnb-maroon); font-weight: 800;">${tls.hostname}</td>
+                        <td class="py-3 pr-4 font-mono text-[11px] pnb-text-2">${tls.ip_address || '<span class="pnb-text-muted italic">not resolved</span>'}</td>
+                        <td class="py-3 pr-4 text-center pnb-text-muted">${tls.port || 443}</td>
+                        <td class="py-3 text-center text-xs pnb-text-2">${svc}</td>
                     </tr>`;
                 } else if (currentAssetTab === 'software') {
                     return `
-                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/80 transition cursor-pointer" onclick="openAssetModal(${tls.id})">
-                        <td class="py-3 pr-4 font-mono text-xs" style="color: #F0C040 !important; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${tls.hostname}</td>
-                        <td class="py-3 pr-4 text-center text-xs text-slate-300">${svc}</td>
-                        <td class="py-3 pr-4 text-center font-mono text-amber-400">${hndl ? hndl.multiplier.toFixed(1) + 'x' : '1.0x'}</td>
+                    <tr class="transition cursor-pointer" onclick="openAssetModal(${tls.id})">
+                        <td class="py-3 pr-4 font-mono text-xs" style="color: var(--pnb-maroon); font-weight: 800;">${tls.hostname}</td>
+                        <td class="py-3 pr-4 text-center text-xs pnb-text-2">${svc}</td>
+                        <td class="py-3 pr-4 text-center font-mono pnb-text-2">${hndl ? hndl.multiplier.toFixed(1) + 'x' : '1.0x'}</td>
                         <td class="py-3 text-center">${riskBadge(hndlLevel)}</td>
                     </tr>`;
                 } else if (currentAssetTab === 'ssl') {
@@ -905,13 +1748,18 @@
                         }
                     }
 
+                    const certIssuesBadge = certIssues.length > 0
+                        ? `<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border bg-amber-500/15 text-amber-600 border-amber-500/30">${certIssues.join(', ')}</span>`
+                        : `<span class="text-emerald-600 text-xs">✓ None</span>`;
+
                     return `
-                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/80 transition cursor-pointer" onclick="openAssetModal(${tls.id})">
-                        <td class="py-3 pr-4 font-mono text-xs" style="color: #F0C040 !important; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${tls.hostname}</td>
-                        <td class="py-3 pr-4 text-xs text-slate-400 max-w-[150px] truncate" title="${keyEx}">${keyEx}</td>
-                        <td class="py-3 pr-4 text-xs text-slate-400 max-w-[150px] truncate" title="${tls.signature_algorithm || ''}">${tls.signature_algorithm || '—'}</td>
-                        <td class="py-3 pr-4 text-center font-mono text-amber-400">${tls.key_size ? tls.key_size + 'b' : '—'}</td>
-                        <td class="py-3 text-center">${riskBadge(classification === 'Low' ? 'Quantum Safe' : 'Quantum Vulnerable')}</td>
+                    <tr class="transition cursor-pointer" onclick="openAssetModal(${tls.id})">
+                        <td class="py-3 pr-4 font-mono text-xs" style="color: var(--pnb-maroon); font-weight: 800;">${tls.hostname}</td>
+                        <td class="py-3 pr-4 text-xs pnb-text-muted max-w-[150px] truncate" title="${keyEx}">${keyEx}</td>
+                        <td class="py-3 pr-4 text-xs pnb-text-muted max-w-[150px] truncate" title="${tls.signature_algorithm || ''}">${tls.signature_algorithm || '—'}</td>
+                        <td class="py-3 pr-4 text-center font-mono pnb-text-2">${tls.key_size ? tls.key_size + 'b' : '—'}</td>
+                        <td class="py-3 pr-4 text-center">${certIssuesBadge}</td>
+                        <td class="py-3 text-center">${riskBadge(classification)}</td>
                     </tr>`;
                 }
             }).join('');
@@ -921,84 +1769,87 @@
         function renderHndlPanel() {
             const tbody = document.getElementById('hndlTableBody');
             if (hndlData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-600">No HNDL data</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 pnb-text-muted">No HNDL data</td></tr>';
                 return;
             }
 
             tbody.innerHTML = hndlData.map(h => {
                 const isVpn = ['OpenVPN', 'IPSec', 'SSL-VPN', 'WireGuard'].includes(h.service);
-                const vpnTag = isVpn ? ' <span class="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">VPN</span>' : '';
+                const vpnTag = isVpn ? ' <span class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">VPN</span>' : '';
 
                 return `
-          <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
-            <td class="py-3 pr-4 font-mono text-xs" style="color: #F0C040 !important; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${h.hostname}</td>
+          <tr class="transition">
+            <td class="py-3 pr-4 font-mono text-xs" style="color: var(--pnb-maroon); font-weight: 800;">${h.hostname}</td>
             <td class="py-3 pr-4 text-xs">${h.service}${vpnTag}</td>
-            <td class="py-3 pr-4 text-center font-bold text-amber-400">${h.multiplier.toFixed(1)}x</td>
+            <td class="py-3 pr-4 text-center font-bold pnb-text-2">${h.multiplier.toFixed(1)}x</td>
             <td class="py-3 text-center">${riskBadge(h.risk)}</td>
           </tr>`;
             }).join('');
         }
 
         /* ── Scan Failures Panel ──────────────────────────────── */
-        async function renderFailuresTable() {
-            try {
-                console.log(`[Failures] Fetching failures for scan ${scanId}...`);
-                const response = await fetch(`/scan/${scanId}/failures`);
-                if (!response.ok) {
-                    console.error(`[Failures] API returned ${response.status}`);
-                    document.getElementById('failuresTableBody').innerHTML =
-                        '<tr><td colspan="4" class="text-center py-2 text-xs text-slate-400">Could not load failures</td></tr>';
-                    return;
-                }
+        // Human labels for the ACTUAL failure codes the scanner emits
+        // (scanner/tls_scanner_async_concurrent.py::_classify and friends).
+        // The previous version of this map used codes like
+        // "DNS_RESOLUTION_ERROR" / "CONNECTION_TIMEOUT" that the current
+        // scanner never produces — those were leftover from an earlier
+        // scanner version and would have shown every real failure as an
+        // unstyled "UNKNOWN_ERROR" fallback.
+        // TCP_TIMEOUT/TCP_REFUSED/TCP_ERROR/TCP_UNREACHABLE/HOST_DEADLINE only
+        // ever reach this table after surviving a reconciliation retry at low
+        // concurrency (see workers/scan_worker.py RETRYABLE_FAILURE_CODES) —
+        // labeled "confirmed" because a scan-burst false failure would have
+        // already recovered and been removed before this point.
+        const FAILURE_LABELS = {
+            'DNS_NO_RECORD': { text: 'No DNS record', cls: 'bg-slate-500/20 text-slate-700' },
+            'TCP_TIMEOUT': { text: 'Host unreachable (confirmed on retry)', cls: 'bg-orange-500/20 text-orange-700' },
+            'TCP_REFUSED': { text: 'No HTTPS service (confirmed on retry)', cls: 'bg-blue-500/20 text-blue-700' },
+            'TCP_UNREACHABLE': { text: 'Network unreachable (confirmed on retry)', cls: 'bg-orange-500/20 text-orange-700' },
+            'TCP_ERROR': { text: 'Connection error (confirmed on retry)', cls: 'bg-orange-500/20 text-orange-700' },
+            'TLS_HANDSHAKE_FAIL': { text: 'TLS handshake rejected (possible WAF/bot detection)', cls: 'bg-red-500/20 text-red-700' },
+            'TLS_LEGACY_CIPHER': { text: 'TLS handshake rejected — even legacy-compatible mode failed', cls: 'bg-red-600/20 text-red-800' },
+            'TLS_RESET': { text: 'Connection reset during handshake', cls: 'bg-red-500/20 text-red-700' },
+            'TLS_TRANSIENT': { text: 'Transient TLS error', cls: 'bg-yellow-500/20 text-yellow-700' },
+            'NOT_TLS': { text: 'Port open but not serving TLS', cls: 'bg-cyan-500/20 text-cyan-700' },
+            'CERT_INVALID': { text: 'Certificate could not be validated', cls: 'bg-yellow-500/20 text-yellow-700' },
+            'HOST_DEADLINE': { text: 'Timed out (confirmed on retry)', cls: 'bg-purple-500/20 text-purple-700' },
+            'BUDGET_EXCEEDED': { text: 'Skipped — scan time budget exhausted', cls: 'bg-purple-500/20 text-purple-700' },
+            'INTERNAL': { text: 'Internal scanner error', cls: 'bg-slate-500/20 text-slate-700' },
+        };
+        function failureLabel(code) {
+            return FAILURE_LABELS[code] || { text: code || 'Unknown', cls: 'bg-slate-500/20 text-slate-700' };
+        }
 
-                const data = await response.json();
-                const failures = data.failures || [];
-                const totalFailures = data.total_failures || 0;
+        function renderFailuresTable() {
+            const failures = failuresCache.failures || [];
+            const totalFailures = failuresCache.total_failures || 0;
 
-                console.log(`[Failures] Loaded ${failures.length} failure records`);
+            if (failures.length === 0) {
+                document.getElementById('failuresTableBody').innerHTML =
+                    '<tr><td colspan="4" class="text-center py-8 pnb-text-muted font-bold">✓ No scan failures - every discovered host was reachable!</td></tr>';
+                document.getElementById('failuresSummary').textContent = 'Total Failures: 0 ✓';
+                return;
+            }
 
-                if (failures.length === 0) {
-                    document.getElementById('failuresTableBody').innerHTML =
-                        '<tr><td colspan="4" class="text-center py-8 text-slate-400 font-bold">✓ No scan failures - all domains scanned successfully!</td></tr>';
-                    document.getElementById('failuresSummary').textContent = 'Total Failures: 0 ✓';
-                    return;
-                }
-
-                // Category color mapping
-                const categoryColors = {
-                    'DNS_RESOLUTION_ERROR': 'bg-blue-500/20 text-blue-700',
-                    'CONNECTION_REFUSED': 'bg-red-500/20 text-red-700',
-                    'CONNECTION_TIMEOUT': 'bg-orange-500/20 text-orange-700',
-                    'CERT_VERIFICATION_ERROR': 'bg-yellow-500/20 text-yellow-700',
-                    'CERT_ERROR': 'bg-red-600/20 text-red-800',
-                    'SSL_ERROR': 'bg-red-500/20 text-red-700',
-                    'PROTOCOL_ERROR': 'bg-indigo-500/20 text-indigo-700',
-                    'RESOURCE_LIMIT': 'bg-purple-500/20 text-purple-700',
-                    'UNKNOWN_ERROR': 'bg-slate-500/20 text-slate-700'
-                };
-
-                document.getElementById('failuresTableBody').innerHTML = failures.map(f => `
-                    <tr class="border-b border-slate-300/30 hover:bg-slate-100/30 transition">
-                        <td class="py-3 pr-4 text-slate-700 font-mono text-xs">${f.hostname || 'N/A'}</td>
+            document.getElementById('failuresTableBody').innerHTML = failures.map(f => {
+                const lbl = failureLabel(f.failure_category);
+                return `
+                    <tr class="transition">
+                        <td class="py-3 pr-4 pnb-text font-mono text-xs">${f.hostname || 'N/A'}</td>
                         <td class="py-3 pr-4">
-                            <span class="inline-block px-2 py-1 rounded text-xs font-bold ${categoryColors[f.failure_category] || categoryColors['UNKNOWN_ERROR']}">
-                                ${f.failure_category || 'UNKNOWN'}
+                            <span class="inline-block px-2 py-1 rounded text-xs font-bold ${lbl.cls}" title="Raw code: ${f.failure_category}">
+                                ${lbl.text}
                             </span>
                         </td>
-                        <td class="py-3 pr-4 text-slate-600 text-xs max-w-md truncate" title="${f.failure_reason || 'Unknown reason'}">
+                        <td class="py-3 pr-4 pnb-text-2 text-xs max-w-md truncate" title="${f.failure_reason || 'Unknown reason'}">
                             ${f.failure_reason || 'No details available'}
                         </td>
-                        <td class="py-3 text-center font-bold text-slate-700">${f.attempt_count || 1}</td>
-                    </tr>
-                `).join('');
+                        <td class="py-3 text-center font-bold pnb-text">${f.attempt_count || 1}</td>
+                    </tr>`;
+            }).join('');
 
-                document.getElementById('failuresSummary').textContent =
-                    `Total Failures: ${totalFailures} ${totalFailures > 0 ? '(see details below)' : '✓'}`;
-            } catch (err) {
-                console.error('[Failures] Load error:', err);
-                document.getElementById('failuresTableBody').innerHTML =
-                    `<tr><td colspan="4" class="text-center py-2 text-xs text-red-600">Error loading failures: ${err.message}</td></tr>`;
-            }
+            document.getElementById('failuresSummary').textContent =
+                `Total Failures: ${totalFailures} (see details below)`;
         }
 
 
@@ -1009,6 +1860,114 @@
             }
         }
 
+        /* ── Migration Priority Matrix ──────────────────────── */
+        // Every host, real risk_score against real HNDL multiplier — turns
+        // two datasets that already existed separately (quantum-risk table,
+        // HNDL table) into a single decision-support view: which hosts are
+        // both high classical risk AND high harvest value, i.e. worth
+        // migrating first. Quadrant shading and labels are drawn manually
+        // via Chart.js's plugin hooks — no extra charting library needed.
+        let priorityMatrixChart = null;
+        function renderPriorityMatrix() {
+            if (qrData.length === 0) return;
+
+            const hndlMap = {}; hndlData.forEach(t => hndlMap[t.hostname] = t);
+            const idMap = {}; tlsData.forEach(t => idMap[t.hostname] = t.id);
+
+            const points = qrData.map(qr => ({
+                x: qr.risk_score,
+                y: hndlMap[qr.hostname] ? hndlMap[qr.hostname].multiplier : 1.0,
+                hostname: qr.hostname,
+                assetId: idMap[qr.hostname],
+                colour: RISK_LABEL_COLORS_JS[qr.risk_label] || '#94a3b8',
+            }));
+
+            const ctx = document.getElementById('priorityMatrix').getContext('2d');
+            if (priorityMatrixChart) priorityMatrixChart.destroy();
+
+            const quadrantPlugin = {
+                id: 'quadrantShading',
+                beforeDraw(chart) {
+                    const { ctx, chartArea, scales } = chart;
+                    if (!chartArea) return;
+                    const { left, top, right, bottom } = chartArea;
+                    const midX = scales.x.getPixelForValue(50);
+                    const midY = scales.y.getPixelForValue(1.5);
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(248, 113, 113, 0.10)';   // fix first
+                    ctx.fillRect(midX, top, right - midX, midY - top);
+                    ctx.fillStyle = 'rgba(251, 191, 36, 0.06)';    // monitor
+                    ctx.fillRect(left, top, midX - left, midY - top);
+                    ctx.fillStyle = 'rgba(251, 191, 36, 0.06)';    // schedule
+                    ctx.fillRect(midX, midY, right - midX, bottom - midY);
+                    ctx.fillStyle = 'rgba(52, 211, 153, 0.06)';    // low priority
+                    ctx.fillRect(left, midY, midX - left, bottom - midY);
+
+                    ctx.font = "10px 'Inter', sans-serif";
+                    ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+                    ctx.textAlign = 'right';
+                    ctx.fillText('FIX FIRST', right - 8, top + 14);
+                    ctx.textAlign = 'left';
+                    ctx.fillText('MONITOR', left + 8, top + 14);
+                    ctx.fillText('LOW PRIORITY', left + 8, bottom - 8);
+                    ctx.textAlign = 'right';
+                    ctx.fillText('SCHEDULE', right - 8, bottom - 8);
+                    ctx.restore();
+                },
+            };
+
+            priorityMatrixChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        data: points,
+                        backgroundColor: points.map(p => p.colour),
+                        borderColor: 'rgba(15, 23, 42, 0.6)',
+                        borderWidth: 1,
+                        pointRadius: 6,
+                        pointHoverRadius: 9,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            min: 0, max: 100,
+                            title: { display: true, text: 'Quantum Risk Score', color: '#94a3b8' },
+                            grid: { color: 'rgba(148,163,184,0.1)' },
+                            ticks: { color: '#94a3b8' },
+                        },
+                        y: {
+                            min: 0.8, max: 2.2,
+                            title: { display: true, text: 'HNDL Harvest Value (×)', color: '#94a3b8' },
+                            grid: { color: 'rgba(148,163,184,0.1)' },
+                            ticks: { color: '#94a3b8' },
+                        },
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            callbacks: {
+                                label: (c) => `${c.raw.hostname} — risk ${c.raw.x}, HNDL ${c.raw.y.toFixed(1)}x`,
+                            },
+                        },
+                    },
+                    onClick: (evt, elements) => {
+                        if (elements.length > 0) {
+                            const p = points[elements[0].index];
+                            if (p.assetId) openAssetModal(p.assetId);
+                        }
+                    },
+                    onHover: (evt, elements) => {
+                        evt.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    },
+                },
+                plugins: [quadrantPlugin],
+            });
+        }
+
         /* ── Attack Surface Graph ──────────────────────────── */
         function renderGraph() {
             if (tlsData.length > 0) {
@@ -1016,49 +1975,180 @@
             }
         }
 
-        /* ── Export JSON ────────────────────────────────────── */
-        document.getElementById('exportJsonBtn').addEventListener('click', async () => {
-            try {
-                const res = await fetch(`/scan/${scanId}/report`);
-                const data = await res.json();
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `quantum-scan-${scanId}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-            } catch (err) {
-                alert('Export failed: ' + err.message);
+        /* ── Download Report dropdown (JSON / PDF / CycloneDX) ─
+           All three formats are pulled from the server's full report
+           data — the PDF is generated server-side (real text, every
+           table), not a window.print() screenshot of the page. ──── */
+        const downloadReportBtn = document.getElementById('downloadReportBtn');
+        const downloadReportMenu = document.getElementById('downloadReportMenu');
+
+        downloadReportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = !downloadReportMenu.classList.contains('hidden');
+            downloadReportMenu.classList.toggle('hidden', isOpen);
+            downloadReportBtn.setAttribute('aria-expanded', String(!isOpen));
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('downloadReportWrap').contains(e.target)) {
+                downloadReportMenu.classList.add('hidden');
+                downloadReportBtn.setAttribute('aria-expanded', 'false');
             }
         });
 
-        /* ── Export PDF (print-based) ───────────────────────── */
-        document.getElementById('exportPdfBtn').addEventListener('click', () => {
-            window.print();
+        const REPORT_FORMATS = {
+            json: { url: `/scan/${scanId}/report`, filename: `quantum-scan-${scanId}.json` },
+            pdf: { url: `/scan/${scanId}/report/pdf`, filename: `quantum-scan-${scanId}.pdf` },
+            cyclonedx: { url: `/scan/${scanId}/report/cyclonedx`, filename: `quantum-scan-${scanId}-cyclonedx.json` },
+        };
+
+        document.querySelectorAll('.download-report-option').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const fmt = REPORT_FORMATS[btn.dataset.format];
+                downloadReportMenu.classList.add('hidden');
+                downloadReportBtn.setAttribute('aria-expanded', 'false');
+                try {
+                    const res = await fetch(fmt.url);
+                    if (!res.ok) {
+                        // The server refuses reports for a scan that produced
+                        // no hosts (409) and explains why — show that reason
+                        // instead of a bare status code.
+                        let detail = `Server returned ${res.status}`;
+                        try { const j = await res.json(); if (j.detail) detail = j.detail; } catch (e) { }
+                        throw new Error(detail);
+                    }
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fmt.filename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Export failed: ' + err.message);
+                }
+            });
         });
 
-        /* ── Authentication UI State ──────────────────────── */
-        const token = localStorage.getItem('token');
-        const authBtn = document.getElementById('authBtn');
-        const navDashboardBtn = document.getElementById('navDashboardBtn');
+        /* ── Rescan: submit a fresh priority scan for this same domain ── */
+        const rescanBtn = document.getElementById('rescanBtn');
+        rescanBtn.addEventListener('click', async () => {
+            if (!domain) return;
+            rescanBtn.disabled = true;
+            const origHTML = rescanBtn.innerHTML;
+            rescanBtn.innerHTML = '<span class="spinner-sm"></span>Starting…';
 
-        if (token) {
-            authBtn.textContent = 'Logout';
-            authBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                localStorage.removeItem('token');
-                localStorage.removeItem('email');
-                localStorage.removeItem('user_id');
+            try {
+                const authToken = localStorage.getItem('token');
+                const headers = { 'Content-Type': 'application/json' };
+                if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+                const res = await fetch('/scan/priority', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ target: domain }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Rescan request failed');
+                }
+
+                const data = await res.json();
+                window.location.href = `/scan-progress/${data.scan_id}`;
+            } catch (err) {
+                alert('Rescan failed: ' + err.message);
+                rescanBtn.disabled = false;
+                rescanBtn.innerHTML = origHTML;
+            }
+        });
+
+        /* ── Authentication UI State ──────────────────────────
+           The login/logout control and the link to the scan history now
+           live in the shared sidebar, which reads the same localStorage
+           token. Nothing to wire up here. */
+
+        /* ── Delete this scan ─────────────────────────────────
+           Deletion is user-scoped and requires auth, so the button sends the
+           bearer token and reports the server's own refusal reason (e.g. a
+           still-running scan) rather than a generic failure. */
+        const delModal = document.getElementById('delModal');
+
+        function openDelModal() {
+            document.getElementById('delLabel').textContent =
+                `Scan #${scanId}${domain ? ' — ' + domain : ''}`;
+            document.getElementById('delErr').classList.add('hidden');
+            const ok = document.getElementById('delOkBtn');
+            ok.disabled = false;
+            ok.textContent = 'Delete permanently';
+            delModal.classList.remove('hidden');
+        }
+
+        function closeDelModal() { delModal.classList.add('hidden'); }
+
+        document.getElementById('deleteScanBtn').addEventListener('click', () => {
+            if (!localStorage.getItem('token')) {
                 window.location.href = '/login';
-            });
-            navDashboardBtn.classList.remove('hidden');
-        } else {
-            authBtn.textContent = 'Login / Register';
+                return;
+            }
+            openDelModal();
+        });
+
+        document.getElementById('delCancelBtn').addEventListener('click', closeDelModal);
+        delModal.addEventListener('click', (e) => { if (e.target === delModal) closeDelModal(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !delModal.classList.contains('hidden')) closeDelModal();
+        });
+
+        document.getElementById('delOkBtn').addEventListener('click', async () => {
+            const ok = document.getElementById('delOkBtn');
+            ok.disabled = true;
+            ok.textContent = 'Deleting…';
+            try {
+                const res = await fetch(`/scan/${scanId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                });
+                if (!res.ok) {
+                    let detail = `Delete failed (${res.status})`;
+                    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch (e) { }
+                    throw new Error(detail);
+                }
+                // The scan this page is showing no longer exists, so staying
+                // here would render a 404-backed dashboard.
+                window.location.href = '/analytics';
+            } catch (err) {
+                const box = document.getElementById('delErr');
+                box.textContent = err.message;
+                box.classList.remove('hidden');
+                ok.disabled = false;
+                ok.textContent = 'Delete permanently';
+            }
+        });
+
+        /* ── Cipher suite plain-language gloss ─────────────── */
+        // Raw cipher strings (e.g. "TLS_AES_256_GCM_SHA384") are precise for
+        // a technical reader but opaque to a non-technical judge/executive.
+        // Kept alongside the raw string, not instead of it — technical
+        // readers still want the exact cipher.
+        function cipherPlainLanguage(cipher) {
+            if (!cipher) return '';
+            const cs = cipher.toUpperCase();
+            let strength = 'Unknown strength';
+            if (cs.includes('AES_256') || cs.includes('AES256')) strength = 'Strong (AES-256)';
+            else if (cs.includes('CHACHA20')) strength = 'Strong (ChaCha20)';
+            else if (cs.includes('AES_128') || cs.includes('AES128')) strength = 'Adequate (AES-128)';
+            else if (cs.includes('3DES') || cs.includes('DES')) strength = 'Weak (legacy DES)';
+            else if (cs.includes('RC4')) strength = 'Weak (broken cipher)';
+            const pq = (cs.includes('KYBER') || cs.includes('ML-KEM') || cs.includes('MLKEM')) ? ', post-quantum key exchange' : ', classical key exchange';
+            return strength + pq;
         }
 
         /* ── Asset Modal Logic ─────────────────────────────── */
+        let currentModalAssetId = null;
+
         function openAssetModal(assetId) {
+            currentModalAssetId = assetId;
             document.getElementById('assetModal').classList.remove('hidden');
             document.getElementById('modalLoading').classList.remove('hidden');
             document.getElementById('modalContent').classList.add('hidden');
@@ -1080,6 +2170,7 @@
 
                     document.getElementById('modalCipher').textContent = data.cipher_suite || 'N/A';
                     document.getElementById('modalCipher').title = data.cipher_suite || '';
+                    document.getElementById('modalCipherPlain').textContent = cipherPlainLanguage(data.cipher_suite);
 
                     document.getElementById('modalKeyEx').textContent = data.key_exchange_algorithm || 'N/A';
                     document.getElementById('modalKeyEx').title = data.key_exchange_algorithm || '';
@@ -1087,20 +2178,46 @@
                     document.getElementById('modalSigAlg').textContent = data.signature_algorithm || 'N/A';
                     document.getElementById('modalKeySize').textContent = data.key_size ? `${data.key_size} bits` : 'N/A';
 
+                    // Certificate Validation — real findings, not derived from the score
+                    const hmEl = document.getElementById('modalHostnameMatch');
+                    if (data.hostname_mismatch === true) { hmEl.textContent = '✗ Mismatch detected'; hmEl.className = 'font-mono text-red-600 font-bold'; }
+                    else if (data.hostname_mismatch === false) { hmEl.textContent = '✓ Matches'; hmEl.className = 'font-mono text-emerald-600'; }
+                    else { hmEl.textContent = 'N/A'; hmEl.className = 'font-mono pnb-text-muted'; }
+
+                    const expEl = document.getElementById('modalExpiry');
+                    if (data.is_expired === true) { expEl.textContent = `✗ Expired (${data.certificate_expiry || 'unknown date'})`; expEl.className = 'font-mono text-red-600 font-bold'; }
+                    else if (typeof data.days_until_expiry === 'number' && data.days_until_expiry < 30) { expEl.textContent = `⚠ Expires in ${data.days_until_expiry} days`; expEl.className = 'font-mono text-amber-600 font-bold'; }
+                    else if (typeof data.days_until_expiry === 'number') { expEl.textContent = `✓ Valid, ${data.days_until_expiry} days remaining`; expEl.className = 'font-mono text-emerald-600'; }
+                    else { expEl.textContent = 'N/A'; expEl.className = 'font-mono pnb-text-muted'; }
+
+                    const ssEl = document.getElementById('modalSelfSigned');
+                    if (data.is_self_signed === true) { ssEl.textContent = '⚠ Self-signed (not CA-trusted)'; ssEl.className = 'font-mono text-amber-600 font-bold'; }
+                    else if (data.is_self_signed === false) { ssEl.textContent = '✓ CA-issued'; ssEl.className = 'font-mono text-emerald-600'; }
+                    else { ssEl.textContent = 'N/A'; ssEl.className = 'font-mono pnb-text-muted'; }
+
+                    document.getElementById('modalIssuer').textContent = data.issuer || 'N/A';
+                    document.getElementById('modalIssuer').title = data.issuer || '';
+
                     // Recommendations
                     document.getElementById('modalPqc').innerHTML = data.pqc_recommendations
                         .map(r => `<li class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>${r}</li>`).join('');
 
-                    // Score Breakdown bars
-                    const b = data.score_breakdown;
-                    const renderBar = (label, val, max) => {
-                        const pct = Math.min(100, Math.max(0, (val / max) * 100));
-                        const color = pct > 50 ? 'bg-red-500' : (pct > 0 ? 'bg-amber-500' : 'bg-emerald-500');
+                    // Score Breakdown — all 10 real weighted components the
+                    // API actually computed for this host, pre-sorted by
+                    // weighted impact (highest-leverage fix first). Each
+                    // raw_score is already 0-100, so the bar fill is a
+                    // direct percentage — no per-component "max" guess is
+                    // needed (a prior version used 6 fixed maxes summing to
+                    // 80 that pre-dated this 10-component/100-point model,
+                    // so 4 of the 10 real components never rendered here).
+                    const renderComponentBar = (c) => {
+                        const pct = Math.min(100, Math.max(0, c.raw_score));
+                        const color = pct > 60 ? 'bg-red-500' : (pct > 30 ? 'bg-amber-500' : 'bg-emerald-500');
                         return `
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="text-slate-400">${label} Penalty</span>
-                                <span class="font-bold font-mono text-slate-300">+${val} pts</span>
+                                <span class="text-slate-400">${c.label} <span class="text-slate-600">(${Math.round(c.weight * 100)}% weight)</span></span>
+                                <span class="font-bold font-mono text-slate-300">${c.raw_score}/100</span>
                             </div>
                             <div class="w-full bg-slate-900 rounded-full h-1.5 border border-slate-700/50 shadow-inner">
                                 <div class="${color} h-1.5 rounded-full shadow-[0_0_8px_currentColor]" style="width: ${pct}%"></div>
@@ -1109,17 +2226,17 @@
                     };
 
                     document.getElementById('scoreBars').innerHTML =
-                        renderBar('Key Exchange', b.key_exchange, 32) +
-                        renderBar('Signature Alg', b.signature, 20) +
-                        renderBar('TLS Protocol', b.tls, 15) +
-                        renderBar('Key Size Rule', b.key_size, 9) +
-                        renderBar('Certificate', b.certificate, 3) +
-                        renderBar('Cipher Strength', b.cipher, 1);
+                        (data.score_components || []).map(renderComponentBar).join('');
                 })
                 .catch(err => {
-                    document.getElementById('modalLoading').innerHTML = `<p class="text-red-400 font-bold">Error loading asset details.</p><p class="text-sm text-slate-500">${err.message}</p>`;
+                    document.getElementById('modalLoading').innerHTML = `<p class="text-red-600 font-bold">Error loading asset details.</p><p class="text-sm pnb-text-muted">${err.message}</p>`;
                     console.error(err);
                 });
+        }
+
+        function downloadHostPdf() {
+            if (currentModalAssetId == null) return;
+            window.open(`/asset/${currentModalAssetId}/report/pdf`, '_blank');
         }
 
         function closeAssetModal() {
@@ -1137,8 +2254,9 @@
         /* ── Toast Notifications ───────────────────────────── */
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
-            const color = type === 'success' ? 'bg-emerald-600' : 'bg-indigo-600';
+            const color = type === 'success' ? 'bg-emerald-600' : '';
             toast.className = `fixed bottom-4 right-4 ${color} text-white px-4 py-3 rounded-lg shadow-xl z-[100] fade-in flex items-center gap-3`;
+            if (!color) toast.style.background = 'var(--pnb-maroon)';
             toast.innerHTML = `<span>${type === 'success' ? '✅' : 'ℹ️'}</span><p class="text-sm font-medium">${message}</p>`;
             document.body.appendChild(toast);
             setTimeout(() => {
@@ -1154,8 +2272,9 @@
     </script>
 
     <!-- Qubitsense AI Agent Widget -->
-    <link rel="stylesheet" href="/css/ai-agent.css?v=4">
-    <script src="/components/ai-agent.js?v=4"></script>
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+    <script src="/components/sidebar.js"></script>
+    <script src="/components/ai-agent.js?v=10"></script>
 
 </body>
 

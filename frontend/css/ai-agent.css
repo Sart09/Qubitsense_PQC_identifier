@@ -251,6 +251,26 @@
     color: white;
 }
 
+/* Label for the quick-question row — makes it explicit that this strip,
+   and only this strip, is what moves you around the platform. */
+#qubit-suggestions-label {
+    flex-basis: 100%;
+    margin: 0 0 2px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    /* 5.9:1 on #0f172a */
+}
+
+/* Chips that navigate are marked so the affordance is visible before the
+   click, not a surprise after it. */
+.qubit-chip-nav {
+    border-color: #4f46e5;
+    color: #c7d2fe;
+    /* 8.1:1 on #1e293b */
+}
+
 /* Input row */
 #qubit-input-row {
     display: flex;
@@ -401,6 +421,32 @@
     100% {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
     }
+}
+
+/*  Voice Reply Toggle — same shape as the mic button  */
+#qubit-voice-toggle {
+    width: 38px;
+    height: 38px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+#qubit-voice-toggle:hover {
+    background: #334155;
+    border-color: #4f46e5;
+}
+
+#qubit-voice-toggle.q-voice-muted {
+    background: #1e293b;
+    border-color: #475569;
+    opacity: 0.6;
 }
 
 /*  Voice Indicator Bar (above input row)  */

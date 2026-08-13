@@ -32,6 +32,7 @@ def calculate_next_run(frequency: str, custom_hours: int = None) -> datetime:
 
 async def poll_and_enqueue():
     while True:
+        conn = None
         try:
             conn = get_connection()
             now = datetime.now(timezone.utc).isoformat()
@@ -81,13 +82,40 @@ async def poll_and_enqueue():
                 print(f"[SCHEDULER] Queued scheduled scan for {schedule['domain']} (Scan ID: {scan_id})")
 
             conn.commit()
-            conn.close()
 
         except Exception as e:
+            # A failure part-way through the `due` loop leaves an open write
+            # transaction. Roll it back so the batch is all-or-nothing rather
+            # than half-enqueued (a scan queued with no schedule_run_history
+            # row, or next_run_at never advanced -> the same scan re-fires
+            # every 60s).
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             print(f"[SCHEDULER ERROR] {e}")
+        finally:
+            # get_connection() opens a NEW connection per call, so the old
+            # close()-inside-try leaked one connection per poll whenever the
+            # body raised — and a leaked connection mid-write holds SQLite's
+            # write lock, which surfaces as "database is locked" over in
+            # scan_worker/server rather than here.
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     print("[SCHEDULER] Starting — polling every 60 seconds")
-    asyncio.run(poll_and_enqueue())
+    try:
+        asyncio.run(poll_and_enqueue())
+    except KeyboardInterrupt:
+        # Ctrl+C cancels the pending asyncio.sleep, which asyncio.run
+        # re-raises as KeyboardInterrupt. Expected shutdown, not a crash —
+        # swallow it so the console shows a clean stop instead of a
+        # two-deep CancelledError traceback.
+        print("\n[SCHEDULER] Stopped")

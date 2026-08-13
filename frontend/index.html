@@ -3,41 +3,20 @@
 
 <head>
   <meta charset="UTF-8" />
+  <!-- Must stay the first script on the page: it redirects unauthenticated
+       visitors to /login before any of this page renders. -->
+  <script src="/js/auth-guard.js?v=1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quantum Proof System Scanner</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
   <meta name="description" content="Analyze websites for quantum cryptographic risk and HNDL exposure." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-          colors: {
-            white: '#1e293b', // Map text-white to dark charcoal
-            slate: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
-            indigo: { 300: '#be123c', 400: '#e11d48', 500: '#a80024', 600: '#88001b' },
-            amber: { 400: '#f59e0b', 500: '#d97706' }
-          },
-        },
-      },
-    };
-  </script>
   <link rel="stylesheet" href="/components/pnb-theme.css">
   <style>
-    body {
-      background-color: #f1f5f9;
-      background-image: url('/components/pnb_bg.png');
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      background-attachment: fixed;
-      color: #334155;
-    }
-
     .glow-border {
-      box-shadow: 0 0 60px rgba(99, 102, 241, 0.08), 0 24px 48px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 60px rgba(212, 160, 23, 0.10), 0 24px 48px rgba(0, 0, 0, 0.4);
     }
 
     @keyframes cardIn {
@@ -66,12 +45,34 @@
       display: inline-block;
       width: 16px;
       height: 16px;
-      border: 2px solid rgba(255, 255, 255, .3);
-      border-top-color: #fff;
+      border: 2px solid rgba(128, 128, 128, .35);
+      /* currentColor so it stays visible on both the maroon primary button
+         and the light secondary button/card surfaces, instead of a
+         hardcoded white that would vanish on a light background. */
+      border-top-color: currentColor;
       border-radius: 50%;
       animation: spin06 .6s linear infinite;
       vertical-align: middle;
       margin-right: 6px;
+    }
+
+    /* Domain/URL upload dropzone — light card-alt surface, brightens on hover */
+    #uploadZone {
+      background: var(--pnb-surface-alt);
+      border-color: var(--pnb-border-strong);
+      transition: background .15s ease;
+    }
+
+    #uploadZone:hover {
+      background: var(--pnb-surface);
+    }
+
+    /* Inline error/result banner */
+    .pnb-alert-error {
+      background: var(--pnb-surface-alt);
+      border: 1px solid var(--pnb-border);
+      border-left: 3px solid var(--pnb-risk-critical);
+      color: var(--pnb-ink);
     }
 
     /* Scanner modals */
@@ -141,68 +142,69 @@
   </style>
 </head>
 
-<body class="font-sans text-slate-800 min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
+<body class="min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
 
   <!-- Navigation -->
   <nav class="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50">
-    <div class="text-indigo-400 font-bold tracking-widest text-sm uppercase" id="navEmailDisplay"></div>
+    <div class="font-bold tracking-widest text-sm uppercase" id="navEmailDisplay" style="color: var(--pnb-gold-light)"></div>
     <div class="flex gap-4">
-      <a href="/login" id="navAuthBtn" class="text-sm font-semibold text-slate-300 hover:text-white transition">Login /
+      <a href="/login" id="navAuthBtn" class="text-sm font-semibold transition pnb-shell-link">Login /
         Register</a>
       <a href="/schedules" id="navSchedulesBtn"
-        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My Schedules</a>
-      <a href="/user-dashboard" id="navDashboardBtn"
-        class="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition hidden">My Dashboard</a>
+        class="text-sm font-semibold transition hidden pnb-shell-link">My Schedules</a>
+      <!-- Signed-in users get back to their domain inventory (the app's
+           Home) from this anonymous landing page. -->
+      <a href="/home" id="navDashboardBtn"
+        class="text-sm font-semibold transition hidden pnb-shell-link">My Domains</a>
+      <a href="/analytics" id="navAnalyticsBtn"
+        class="text-sm font-semibold transition hidden pnb-shell-link">Analytics</a>
     </div>
   </nav>
 
   <!-- ---- Main Card ---- -->
   <div class="relative z-10 w-full max-w-xl px-4 card-animate mt-16">
-    <div class="bg-slate-900/75 backdrop-blur-xl border border-indigo-500/25 rounded-2xl p-10 glow-border">
+    <div class="backdrop-blur-xl rounded-2xl p-10 glow-border pnb-card">
 
       <!-- Logo -->
       <div class="flex items-center justify-center mb-6">
         <div class="flex items-center gap-3">
           <span class="text-4xl drop-shadow-md">🏦</span>
           <div class="flex flex-col text-left">
-            <h1 class="text-2xl font-extrabold tracking-tight text-[#a80024]">
+            <h1 class="text-2xl font-extrabold tracking-tight" style="color: var(--pnb-maroon)">
               Punjab National Bank
             </h1>
-            <h2 class="text-sm font-semibold tracking-widest uppercase text-amber-500">
+            <h2 class="text-sm font-semibold tracking-widest uppercase" style="color: var(--pnb-maroon)">
               Enterprise PQC Gateway
             </h2>
           </div>
         </div>
       </div>
-      <p class="text-sm text-slate-400 mb-8 leading-relaxed text-center font-medium">
+      <p class="text-sm mb-8 leading-relaxed text-center font-medium pnb-text-2">
         Securely evaluate domain infrastructure for post-quantum cryptographic risk and
-        <strong class="text-slate-300">Harvest&nbsp;Now,&nbsp;Decrypt&nbsp;Later</strong> exposure.
+        <strong class="pnb-text">Harvest&nbsp;Now,&nbsp;Decrypt&nbsp;Later</strong> exposure.
       </p>
 
       <!-- Method 1: Manual Domain Input -->
       <form id="scanForm" autocomplete="off">
-        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2" for="targetInput">Target
+        <label class="block text-xs font-semibold uppercase tracking-wider mb-2 pnb-label" for="targetInput">Target
           Domain or URL</label>
         <div class="flex gap-3 mb-4">
-          <input id="targetInput" type="text" placeholder="e.g. login.bank.com or https://example.com" class="flex-1 px-4 py-3 rounded-xl bg-slate-800/60 border border-indigo-500/20
-                        text-[#1e293b] placeholder-slate-500 outline-none
-                        focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition" />
+          <input id="targetInput" type="text" placeholder="e.g. login.bank.com or https://example.com" class="flex-1 px-4 py-3 rounded-xl outline-none
+                        transition pnb-input" />
         </div>
         <div class="flex gap-3 mb-6">
-          <button id="scanNowBtn" type="submit" class="flex-1 px-6 py-3 rounded-xl font-semibold text-[#fff]
-                         bg-gradient-to-r from-[#a80024] to-[#d32f2f]
-                         shadow-lg shadow-red-500/30 hover:-translate-y-0.5
-                         hover:shadow-red-500/50 active:translate-y-0 transition
+          <button id="scanNowBtn" type="submit" class="flex-1 px-6 py-3 rounded-xl font-semibold
+                         hover:-translate-y-0.5
+                         active:translate-y-0 transition
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-                         flex items-center justify-center gap-2">
+                         flex items-center justify-center gap-2 pnb-btn pnb-btn-primary">
             ⚡ Scan Now
           </button>
           <button id="queueBtn" type="button" class="flex-1 px-6 py-3 rounded-xl font-semibold
-                         text-amber-500 border-2 border-amber-500/40
-                         hover:bg-amber-500/10 hover:-translate-y-0.5
+                         border-2 hover:-translate-y-0.5
                          active:translate-y-0 transition
                          disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-                         flex items-center justify-center gap-2">
+                         flex items-center justify-center gap-2 pnb-btn pnb-btn-secondary">
             📋 Add to Queue
           </button>
         </div>
@@ -210,21 +212,21 @@
 
       <!-- Divider -->
       <div class="flex items-center gap-4 mb-6">
-        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
-        <span class="text-xs font-bold uppercase tracking-widest text-slate-500">or</span>
-        <div class="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
+        <div class="flex-1 h-px" style="background: linear-gradient(to right, transparent, var(--pnb-border-strong), transparent)"></div>
+        <span class="text-xs font-bold uppercase tracking-widest pnb-text-muted">or</span>
+        <div class="flex-1 h-px" style="background: linear-gradient(to right, transparent, var(--pnb-border-strong), transparent)"></div>
       </div>
 
       <!-- Method 2: Document Upload -->
       <div
-        class="relative w-full rounded-xl border border-dashed border-indigo-500/40 bg-slate-800/30 hover:bg-slate-800/60 transition p-6 text-center group cursor-pointer"
+        class="relative w-full rounded-xl border border-dashed transition p-6 text-center group cursor-pointer"
         id="uploadZone">
         <input type="file" id="fileUpload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           accept="image/*,application/pdf" />
         <div class="text-4xl mb-2 group-hover:-translate-y-1 transition transform duration-300">📄</div>
-        <h3 class="text-sm font-semibold text-slate-300 mb-1">Upload QR / Barcode Document</h3>
-        <p class="text-[10px] text-slate-500">Supports PNG, JPG, and PDF</p>
-        <div id="uploadLoader" class="hidden mt-3 text-sm text-indigo-400 font-medium tracking-wide">
+        <h3 class="text-sm font-semibold mb-1 pnb-text">Upload QR / Barcode Document</h3>
+        <p class="text-[10px] pnb-text-muted">Supports PNG, JPG, and PDF</p>
+        <div id="uploadLoader" class="hidden mt-3 text-sm font-medium tracking-wide pnb-text-2">
           <span class="spinner-sm"></span> Extracting URL...
         </div>
       </div>
@@ -234,7 +236,7 @@
     </div>
   </div>
 
-  <p class="relative z-10 mt-6 text-[11px] text-slate-500/50 uppercase font-bold tracking-wider">Punjab National Bank -
+  <p class="relative z-10 mt-6 text-[11px] uppercase font-bold tracking-wider pnb-shell-text-muted">Punjab National Bank -
     Enterprise Security Gateway v0.2</p>
 
 
@@ -279,7 +281,7 @@
         window.location.href = `/scan-progress/${data.scan_id}`;
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
-        resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-red-500/10 border border-red-500/30 text-red-400';
+        resultEl.className = 'mt-6 block rounded-xl p-4 text-sm pnb-alert-error';
         scanNowBtn.disabled = false;
         queueBtn.disabled = false;
         activeBtn.innerHTML = origHTML;
@@ -326,7 +328,7 @@
         submitScan(extractedUrl);
       } catch (err) {
         resultEl.textContent = `Upload Error: ${err.message}`;
-        resultEl.className = 'mt-6 block rounded-xl p-4 text-sm bg-red-500/10 border border-red-500/30 text-red-400';
+        resultEl.className = 'mt-6 block rounded-xl p-4 text-sm pnb-alert-error';
       } finally {
         uploadLoader.classList.add('hidden');
         uploadInput.value = '';
@@ -353,10 +355,9 @@
         navEmailDisplay.textContent = email || 'Authenticated';
         navAuthBtn.textContent = 'Logout';
         navAuthBtn.href = '#';
-        navAuthBtn.classList.replace('text-slate-300', 'text-red-400');
-        navAuthBtn.classList.replace('hover:text-white', 'hover:text-red-300');
         navDashboardBtn.classList.remove('hidden');
         document.getElementById('navSchedulesBtn').classList.remove('hidden');
+        document.getElementById('navAnalyticsBtn').classList.remove('hidden');
 
         navAuthBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -370,8 +371,8 @@
   </script>
 
   <!-- Qubitsense AI Agent Widget -->
-  <link rel="stylesheet" href="/css/ai-agent.css?v=4">
-  <script src="/components/ai-agent.js?v=4"></script>
+  <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+  <script src="/components/ai-agent.js?v=10"></script>
 
 </body>
 

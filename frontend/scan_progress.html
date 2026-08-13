@@ -5,38 +5,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Scan Progress — Quantum Proof System Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
     <meta name="description" content="Live scan progress for quantum cryptographic analysis." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-                    colors: {
-                        white: '#1e293b',
-                        slate: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
-                        indigo: { 300: '#be123c', 400: '#e11d48', 500: '#a80024', 600: '#88001b' },
-                        amber: { 400: '#f59e0b', 500: '#d97706' }
-                    }
-                },
-            },
-        };
-    </script>
     <link rel="stylesheet" href="/components/pnb-theme.css">
     <style>
-        body {
-            background-color: #f1f5f9;
-            background-image: url('/components/pnb_bg.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            color: #334155;
-        }
-
         @keyframes cardIn {
             from {
                 opacity: 0;
@@ -69,6 +45,20 @@
             animation: progressPulse 1.5s ease-in-out infinite;
         }
 
+        /* ---- Live execution trace line colours ----
+           The theme's risk tokens are documented as FILL colours that must
+           not be used as standalone text (--pnb-risk-critical is only
+           3.2:1 against the terminal's --pnb-maroon-dark ground, well under
+           the 4.5:1 floor for 11px type). These are the terminal's own
+           text ramp, measured against #4E0B11: ok 9.1:1, bad 7.7:1,
+           wait 9.1:1, host 9.9:1. Colour is never the only signal either —
+           every line carries a ✓ / ✗ / … glyph and its phase tag. */
+        #liveLogs .lg-ok { color: #6FE06F; }
+        #liveLogs .lg-bad { color: #FF9B9B; }
+        #liveLogs .lg-wait { color: #F0C040; }
+        #liveLogs .lg-host { color: var(--pnb-shell-text-muted); }
+        #liveLogs .lg-phase { color: #F0C040; font-weight: 600; }
+
         @keyframes scanline {
             0% {
                 top: 0;
@@ -91,32 +81,31 @@
     </style>
 </head>
 
-<body class="font-sans text-slate-800 min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
+<body class="min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
 
     <div class="relative z-10 w-full max-w-2xl px-4 card-animate">
-        <div class="bg-slate-900/75 backdrop-blur-xl border border-indigo-500/25 rounded-2xl p-10
-                shadow-[0_0_60px_rgba(99,102,241,0.08),0_24px_48px_rgba(0,0,0,0.4)]">
+        <div class="pnb-card p-10">
 
             <!-- Header -->
             <div class="flex items-center gap-3 mb-2 justify-between">
                 <div class="flex items-center gap-3">
                     <span class="text-3xl drop-shadow-md">🏦</span>
-                    <h1 class="text-xl font-extrabold tracking-tight text-[#a80024]">
+                    <h1 class="pnb-h1 text-xl tracking-tight">
                         Punjab National Bank — Scan in Progress
                     </h1>
                 </div>
-                <a href="/scanner"
-                    class="text-xs font-bold text-amber-600 hover:text-amber-800 transition px-3 py-1.5 border border-amber-600/30 hover:bg-amber-600/10 rounded-md">Cancel
-                    Scan</a>
+                <button id="cancelBtn" onclick="cancelScan()" class="pnb-btn pnb-btn-danger">
+                    Cancel Scan</button>
             </div>
-            <p id="domainLabel" class="text-sm text-slate-500 mb-8 font-medium tracking-wide">Enterprise Gateway is
-                analyzing <strong class="text-slate-900" id="targetDomain">...</strong></p>
+            <p id="domainLabel" class="pnb-text-muted text-sm mb-8 font-medium tracking-wide">Enterprise Gateway is
+                analyzing <strong class="pnb-text" id="targetDomain">...</strong></p>
 
             <!-- Status Badge -->
             <div class="flex items-center gap-3 mb-8">
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Status</span>
-                <span id="statusBadge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
-                     bg-blue-500/15 text-blue-400 border border-blue-500/30 progress-active">
+                <span class="pnb-text-muted text-xs font-bold uppercase tracking-wider">Status</span>
+                <span id="statusBadge" class="pnb-badge uppercase tracking-wider px-3 py-1.5 rounded-full progress-active"
+                    style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border-strong);">
+                    <span class="pnb-dot pnb-dot-transitioning"></span>
                     Queued
                 </span>
             </div>
@@ -125,94 +114,123 @@
             <div class="space-y-4" id="stepsContainer">
                 <div class="step" data-step="discovery">
                     <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold flex items-center gap-2">
+                        <span class="pnb-text text-sm font-semibold flex items-center gap-2">
                             <span class="step-icon text-base">🔍</span> Domain Discovery
                         </span>
-                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                        <span class="step-pct pnb-text-muted text-xs font-mono">0%</span>
                     </div>
-                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-700"
-                            style="width: 0%"></div>
+                    <div class="w-full h-2 rounded-full overflow-hidden"
+                        style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                        <div class="step-bar h-full rounded-full transition-all duration-700"
+                            style="width: 0%; background: linear-gradient(90deg, var(--pnb-gold), var(--pnb-gold-light));">
+                        </div>
                     </div>
                 </div>
 
                 <div class="step" data-step="tls">
                     <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold flex items-center gap-2">
+                        <span class="pnb-text text-sm font-semibold flex items-center gap-2">
                             <span class="step-icon text-base">🔒</span> TLS Analysis
                         </span>
-                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                        <span class="step-pct pnb-text-muted text-xs font-mono">0%</span>
                     </div>
-                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-indigo-600 to-cyan-400 transition-all duration-700"
-                            style="width: 0%"></div>
+                    <div class="w-full h-2 rounded-full overflow-hidden"
+                        style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                        <div class="step-bar h-full rounded-full transition-all duration-700"
+                            style="width: 0%; background: linear-gradient(90deg, var(--pnb-maroon-dark), var(--pnb-maroon));">
+                        </div>
                     </div>
                 </div>
 
                 <div class="step" data-step="quantum">
                     <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold flex items-center gap-2">
+                        <span class="pnb-text text-sm font-semibold flex items-center gap-2">
                             <span class="step-icon text-base">⚛️</span> Quantum Risk Engine
                         </span>
-                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                        <span class="step-pct pnb-text-muted text-xs font-mono">0%</span>
                     </div>
-                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-purple-600 to-indigo-400 transition-all duration-700"
-                            style="width: 0%"></div>
+                    <div class="w-full h-2 rounded-full overflow-hidden"
+                        style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                        <div class="step-bar h-full rounded-full transition-all duration-700"
+                            style="width: 0%; background: var(--pnb-risk-transitioning);"></div>
                     </div>
                 </div>
 
                 <div class="step" data-step="hndl">
                     <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold flex items-center gap-2">
+                        <span class="pnb-text text-sm font-semibold flex items-center gap-2">
                             <span class="step-icon text-base">🕵️</span> HNDL Detection
                         </span>
-                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                        <span class="step-pct pnb-text-muted text-xs font-mono">0%</span>
                     </div>
-                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-amber-600 to-orange-400 transition-all duration-700"
-                            style="width: 0%"></div>
+                    <div class="w-full h-2 rounded-full overflow-hidden"
+                        style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                        <div class="step-bar h-full rounded-full transition-all duration-700"
+                            style="width: 0%; background: var(--pnb-risk-vulnerable);"></div>
                     </div>
                 </div>
 
                 <div class="step" data-step="graph">
                     <div class="flex justify-between items-center mb-1.5">
-                        <span class="text-sm font-semibold flex items-center gap-2">
+                        <span class="pnb-text text-sm font-semibold flex items-center gap-2">
                             <span class="step-icon text-base">🌐</span> Graph Engine
                         </span>
-                        <span class="step-pct text-xs text-slate-500 font-mono">0%</span>
+                        <span class="step-pct pnb-text-muted text-xs font-mono">0%</span>
                     </div>
-                    <div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div class="step-bar h-full rounded-full bg-gradient-to-r from-emerald-600 to-green-400 transition-all duration-700"
-                            style="width: 0%"></div>
+                    <div class="w-full h-2 rounded-full overflow-hidden"
+                        style="background: var(--pnb-surface-alt); border: 1px solid var(--pnb-border);">
+                        <div class="step-bar h-full rounded-full transition-all duration-700"
+                            style="width: 0%; background: var(--pnb-risk-safe);"></div>
                     </div>
                 </div>
             </div>
 
             <!-- Live Terminal -->
             <div class="mt-8">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Live Execution Trace</span>
+                <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                    <span class="pnb-text-muted text-xs font-bold uppercase tracking-wider">Live Execution Trace</span>
+                    <span class="flex items-center gap-3">
+                        <span id="logCount" class="pnb-text-muted text-xs font-mono">0 lines</span>
+                        <label class="pnb-text-muted text-xs flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="checkbox" id="followLogs" checked> follow
+                        </label>
+                    </span>
                 </div>
-                <div id="liveLogs"
-                    class="bg-black/80 border border-indigo-500/20 rounded-xl p-4 h-48 overflow-y-auto font-mono text-[11px] text-emerald-400 space-y-1.5 shadow-inner">
+                <div id="liveLogs" class="rounded-xl p-4 h-80 overflow-y-auto font-mono text-[11px] space-y-1.5 whitespace-pre-wrap break-all" style="background: var(--pnb-maroon-dark); border: 1px solid var(--pnb-shell-border); color: var(--pnb-shell-text); box-shadow: inset 0 2px 10px rgba(0,0,0,.35);">
                     <div class="opacity-50">> Initializing quantum scanner protocols...</div>
                 </div>
             </div>
 
             <!-- Completed Message -->
             <div id="completeMsg" class="hidden mt-8 text-center">
-                <p class="text-emerald-400 font-bold text-lg mb-2">✅ Scan Complete</p>
-                <p class="text-slate-400 text-sm">Redirecting to dashboard…</p>
+                <p class="font-bold text-lg mb-2" style="color: var(--pnb-risk-safe);">✅ Scan Complete</p>
+                <p class="pnb-text-muted text-sm">Redirecting to dashboard…</p>
             </div>
 
             <!-- Failed Message -->
             <div id="failMsg" class="hidden mt-8 text-center">
-                <p class="text-red-400 font-bold text-lg mb-2">❌ Scan Failed</p>
-                <p class="text-slate-400 text-sm">An error occurred during scanning.</p>
-                <a href="/scanner"
-                    class="inline-block mt-4 px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500 transition">
+                <p class="font-bold text-lg mb-2" style="color: var(--pnb-risk-critical);">❌ Scan Failed</p>
+                <p class="pnb-text-muted text-sm">An error occurred during scanning.</p>
+                <a href="/scanner" class="pnb-btn pnb-btn-primary mt-4">
                     Try Again
+                </a>
+            </div>
+
+            <!-- Cancelled Message -->
+            <div id="cancelMsg" class="hidden mt-8 text-center">
+                <p class="font-bold text-lg mb-2" style="color: var(--pnb-risk-transitioning);">■ Scan Cancelled</p>
+                <p class="pnb-text-muted text-sm">This scan was stopped before it finished.</p>
+                <a href="/scanner" class="pnb-btn pnb-btn-primary mt-4">
+                    Start a New Scan
+                </a>
+            </div>
+
+            <!-- Error / Not Found Message -->
+            <div id="errorMsg" class="hidden mt-8 text-center">
+                <p class="font-bold text-lg mb-2" style="color: var(--pnb-risk-critical);">⚠ Couldn't Load This Scan</p>
+                <p id="errorMsgDetail" class="pnb-text-muted text-sm">This scan doesn't exist or couldn't be reached.</p>
+                <a href="/scanner" class="pnb-btn pnb-btn-primary mt-4">
+                    Back to Scanner
                 </a>
             </div>
         </div>
@@ -231,11 +249,49 @@
         const steps = document.querySelectorAll('.step');
         const completeMsg = document.getElementById('completeMsg');
         const failMsg = document.getElementById('failMsg');
+        const cancelMsg = document.getElementById('cancelMsg');
+        const errorMsg = document.getElementById('errorMsg');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        /* ── Cancel Scan — was previously just a link to "/scanner" that
+           never actually stopped the scan server-side. ────────────────── */
+        async function cancelScan() {
+            if (!confirm('Cancel this scan? It will be marked as cancelled and cannot be resumed.')) return;
+            cancelBtn.disabled = true;
+            cancelBtn.textContent = 'Cancelling…';
+            try {
+                const res = await fetch(`/scan/${scanId}/stop`, { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.detail || `Couldn't cancel this scan (${res.status}).`);
+                    cancelBtn.disabled = false;
+                    cancelBtn.textContent = 'Cancel Scan';
+                    return;
+                }
+                // poll() will pick up the 'cancelled' status on its next tick
+                // and show the cancelled state / stop polling.
+            } catch (err) {
+                alert("Couldn't reach the server: " + err.message);
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Cancel Scan';
+            }
+        }
 
         /* ── Stage simulation based on status ──────────────── */
         const STAGES = ['discovery', 'tls', 'quantum', 'hndl', 'graph'];
 
-        function updateStepsFromLogs(logs, status) {
+        // Logs come back oldest-first (ORDER BY id ASC) and each phase logs
+        // repeatedly as it progresses ("Scanned 5/821", then "10/821", ...).
+        // A plain String.match() with no /g flag returns the FIRST hit in
+        // the string — the earliest, smallest count — so every progress bar
+        // below would freeze near its starting value for the whole scan
+        // instead of advancing. Always take the LAST match instead.
+        function lastMatch(text, re) {
+            const all = [...text.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))];
+            return all.length ? all[all.length - 1] : null;
+        }
+
+        function updateStepsFromLogs(status) {
             // Parse new [PHASE] format progress indicators
             // Format examples:
             // [DISCOVERY] Discovered 50 unique subdomains...
@@ -249,7 +305,7 @@
             let hndlProgress = 0;
             let graphProgress = 0;
 
-            const fullText = logs.map(l => l.message).join('\n');
+            const fullText = logText;
 
             // Parse DISCOVERY phase
             const discoveryMatch = fullText.match(/\[DISCOVERY[\s✓]*\]/);
@@ -262,7 +318,7 @@
             }
 
             // Parse IP RESOLUTION phase
-            const resolutionMatch = fullText.match(/\[IP RESOLUTION\] Resolved (\d+)\/(\d+) domains/);
+            const resolutionMatch = lastMatch(fullText, /\[IP RESOLUTION\] Resolved (\d+)\/(\d+) domains/);
             if (resolutionMatch) {
                 const current = parseInt(resolutionMatch[1]);
                 const total = parseInt(resolutionMatch[2]);
@@ -272,7 +328,7 @@
             }
 
             // Parse TLS ANALYSIS phase
-            const tlsMatch = fullText.match(/\[TLS ANALYSIS\] Scanned (\d+)\/(\d+) endpoints/);
+            const tlsMatch = lastMatch(fullText, /\[TLS ANALYSIS\] Scanned (\d+)\/(\d+) endpoints/);
             if (tlsMatch) {
                 const current = parseInt(tlsMatch[1]);
                 const total = parseInt(tlsMatch[2]);
@@ -282,7 +338,7 @@
             }
 
             // Parse STORAGE phase
-            const storageMatch = fullText.match(/\[STORAGE\] Stored (\d+)\/(\d+) domain results/);
+            const storageMatch = lastMatch(fullText, /\[STORAGE\] Stored (\d+)\/(\d+) domain results/);
             if (storageMatch) {
                 const current = parseInt(storageMatch[1]);
                 const total = parseInt(storageMatch[2]);
@@ -316,25 +372,39 @@
             let storageCurrent = 0, storageTotal = 0;
 
             // Extract counts from log messages
-            const discoveryCountMatch = fullText.match(/\[DISCOVERY[\s✓]*\] Discovered (\d+) unique/);
+            const discoveryCountMatch = lastMatch(fullText, /\[DISCOVERY[\s✓]*\] Discovered (\d+) unique/);
             if (discoveryCountMatch) discoveryCount = parseInt(discoveryCountMatch[1]);
 
-            const resolutionMatch2 = fullText.match(/\[IP RESOLUTION\] Resolved (\d+)\/(\d+)/);
+            const resolutionMatch2 = lastMatch(fullText, /\[IP RESOLUTION\] Resolved (\d+)\/(\d+)/);
             if (resolutionMatch2) {
                 resolutionCurrent = parseInt(resolutionMatch2[1]);
                 resolutionTotal = parseInt(resolutionMatch2[2]);
             }
 
-            const tlsMatch2 = fullText.match(/\[TLS ANALYSIS\] Scanned (\d+)\/(\d+)/);
+            const tlsMatch2 = lastMatch(fullText, /\[TLS ANALYSIS\] Scanned (\d+)\/(\d+)/);
             if (tlsMatch2) {
                 tlsCurrent = parseInt(tlsMatch2[1]);
                 tlsTotal = parseInt(tlsMatch2[2]);
             }
 
-            const storageMatch2 = fullText.match(/\[STORAGE\] Stored (\d+)\/(\d+)/);
+            const storageMatch2 = lastMatch(fullText, /\[STORAGE\] Stored (\d+)\/(\d+)/);
             if (storageMatch2) {
                 storageCurrent = parseInt(storageMatch2[1]);
                 storageTotal = parseInt(storageMatch2[2]);
+            }
+
+            // The reconciliation pass runs after TLS ANALYSIS hits 100% and
+            // can take a while on a domain with many flagged failures —
+            // without this, the "quantum" step just sits at a green
+            // checkmark while the scan silently keeps running underneath it,
+            // which reads as hung rather than as still-working.
+            let reconcileNote = '';
+            const reconcileStartMatch = lastMatch(fullText, /\[RECONCILIATION\] Retrying (\d+) connection-level failures/);
+            if (reconcileStartMatch && !fullText.includes('[RECONCILIATION ✓]')) {
+                const reconcileProgressMatch = lastMatch(fullText, /\[RECONCILIATION\] Verified (\d+)\/(\d+)/);
+                reconcileNote = reconcileProgressMatch
+                    ? ` · verifying ${reconcileProgressMatch[1]}/${reconcileProgressMatch[2]} flagged hosts`
+                    : ` · verifying ${reconcileStartMatch[1]} flagged hosts`;
             }
 
             STAGES.forEach((stage) => {
@@ -353,7 +423,7 @@
                 } else if (stage === 'tls' && resolutionTotal > 0) {
                     displayText = `${resolutionCurrent}/${resolutionTotal}`;
                 } else if (stage === 'quantum' && tlsTotal > 0) {
-                    displayText = `${tlsCurrent}/${tlsTotal}`;
+                    displayText = `${tlsCurrent}/${tlsTotal}${reconcileNote}`;
                 } else if (stage === 'hndl' && storageTotal > 0) {
                     displayText = `${storageCurrent}/${storageTotal}`;
                 }
@@ -361,7 +431,9 @@
                 pct.textContent = displayText;
 
                 // Icon states
-                if (progress >= 100) {
+                if (stage === 'quantum' && reconcileNote) {
+                    icon.textContent = '⏳'; // still verifying flagged failures, not actually done yet
+                } else if (progress >= 100) {
                     icon.textContent = '✅';
                 } else if (progress > 0) {
                     icon.textContent = '⏳';
@@ -379,61 +451,172 @@
             });
         }
 
+        /* ── Live execution trace ──────────────────────────────
+           Rows arrive as a tail (?after_id=) and are appended, never
+           re-rendered. allLogs keeps the full history client-side because
+           updateStepsFromLogs() needs to see earlier phase markers (e.g.
+           "[DISCOVERY ✓]") that have long since scrolled past. ───────── */
+        let allLogs = [];
+        let lastLogId = 0;
+        // Built incrementally alongside allLogs: the phase regexes below run
+        // against the whole trace on every poll, and re-joining a
+        // thousands-of-lines array each tick is pure waste.
+        let logText = '';
+        let placeholderCleared = false;
+        const logBox = document.getElementById('liveLogs');
+        const logCountEl = document.getElementById('logCount');
+        const followEl = document.getElementById('followLogs');
+
+        // A scan of a large estate emits thousands of lines. Keeping every
+        // one as a DOM node makes the page crawl, so the rendered window is
+        // capped — allLogs still holds the full history for parsing, and the
+        // complete trace stays available from the API.
+        const MAX_RENDERED_ROWS = 1500;
+
+        // Colour is emphasis only; the ✓/✗/… glyph and the phase tag carry
+        // the meaning, so nothing here depends on seeing colour.
+        function logClass(message) {
+            if (/^\[(SCAN \d+\/\d+|RETRY)\] ✓/.test(message)) return 'lg-ok';
+            if (/^\[(SCAN \d+\/\d+|RETRY)\] ✗/.test(message)) return 'lg-bad';
+            if (/^\[SCAN \d+\/\d+\] …/.test(message)) return 'lg-wait';
+            if (/^\[INVENTORY /.test(message)) return 'lg-host';
+            if (/⚠|\[FAILED\]/.test(message)) return 'lg-bad';
+            // Phase headers and counters — the structural spine of the trace.
+            return 'lg-phase';
+        }
+
+        function appendLogs(rows) {
+            // Auto-scroll only when the user hasn't scrolled away. Without
+            // this, reading anything in a live trace is impossible — every
+            // poll yanks you back to the bottom mid-sentence.
+            const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 40;
+
+            const frag = document.createDocumentFragment();
+            rows.forEach(log => {
+                allLogs.push(log);
+                logText += log.message + '\n';
+                const d = new Date(log.created_at);
+                const row = document.createElement('div');
+                row.className = logClass(log.message);
+                row.textContent = `> [${d.toLocaleTimeString()}] ${log.message}`;
+                frag.appendChild(row);
+            });
+
+            // Drop the "Initializing…" placeholder on the first real line.
+            if (!placeholderCleared) {
+                logBox.innerHTML = '';
+                placeholderCleared = true;
+            }
+            logBox.appendChild(frag);
+
+            while (logBox.children.length > MAX_RENDERED_ROWS) {
+                logBox.removeChild(logBox.firstElementChild);
+            }
+
+            logCountEl.textContent = `${allLogs.length} line${allLogs.length === 1 ? '' : 's'}`;
+            if (followEl.checked && atBottom) logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // Re-enable following by ticking the box: jump straight to the tail.
+        followEl.addEventListener('change', () => {
+            if (followEl.checked) logBox.scrollTop = logBox.scrollHeight;
+        });
+
         /* ── Polling ───────────────────────────────────────── */
+        let consecutiveFailures = 0;
+
         async function poll() {
             try {
                 const res = await fetch(`/scan/${scanId}`);
-                if (!res.ok) return;
+                if (!res.ok) {
+                    // A 404 means this scan_id genuinely doesn't exist — no
+                    // point retrying. Anything else (5xx, network hiccup)
+                    // gets a few retries before we give up and tell the user,
+                    // instead of sitting on "Queued" forever with no signal.
+                    if (res.status === 404) {
+                        clearInterval(pollInterval);
+                        document.getElementById('errorMsgDetail').textContent = `Scan #${scanId} doesn't exist.`;
+                        errorMsg.classList.remove('hidden');
+                        cancelBtn.disabled = true;
+                        return;
+                    }
+                    consecutiveFailures++;
+                    if (consecutiveFailures >= 5) {
+                        clearInterval(pollInterval);
+                        document.getElementById('errorMsgDetail').textContent = `Server returned an error (${res.status}) after several retries.`;
+                        errorMsg.classList.remove('hidden');
+                    }
+                    return;
+                }
+                consecutiveFailures = 0;
                 const data = await res.json();
 
                 document.getElementById('targetDomain').textContent = data.domain || scanId;
 
-                // Update badge
-                badge.textContent = data.status;
-                badge.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ';
-                if (data.status === 'queued') {
-                    badge.className += 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
-                } else if (data.status === 'running') {
-                    badge.className += 'bg-blue-500/15 text-blue-400 border border-blue-500/30 progress-active';
+                // Update badge — base pnb-badge classes/border/background stay
+                // fixed in the HTML; only the dot colour, the pulse animation,
+                // and the text label change per status. Colour is never the
+                // sole carrier of state — the text label always ships with it.
+                const dot = document.createElement('span');
+                dot.className = 'pnb-dot';
+                if (data.status === 'queued' || data.status === 'running') {
+                    dot.classList.add('pnb-dot-transitioning');
                 } else if (data.status === 'completed') {
-                    badge.className += 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+                    dot.classList.add('pnb-dot-safe');
                 } else if (data.status === 'failed') {
-                    badge.className += 'bg-red-500/15 text-red-400 border border-red-500/30';
+                    dot.classList.add('pnb-dot-critical');
+                } else {
+                    // paused / cancelled — neutral, no dedicated risk-scale colour
+                    dot.style.background = 'var(--pnb-ink-muted)';
                 }
+                badge.innerHTML = '';
+                badge.appendChild(dot);
+                badge.appendChild(document.createTextNode(data.status));
+                badge.classList.toggle('progress-active', data.status === 'running');
 
-                // Append Logs Terminal Stream
-                let fetchedLogs = [];
+                // Append Logs Terminal Stream — tail only. The scan names
+                // every discovered host and every host result, so the trace
+                // runs to thousands of lines; refetching and re-rendering the
+                // whole history every 2s (the old behaviour) both grew the
+                // response without bound and destroyed the user's scroll
+                // position and text selection on every tick.
                 try {
-                    const logsRes = await fetch(`/scan/${scanId}/logs`);
+                    const logsRes = await fetch(`/scan/${scanId}/logs?after_id=${lastLogId}`);
                     if (logsRes.ok) {
-                        fetchedLogs = await logsRes.json();
-                        if (fetchedLogs.length > 0) {
-                            const logBox = document.getElementById('liveLogs');
-                            logBox.innerHTML = '';
-                            fetchedLogs.forEach(log => {
-                                const d = new Date(log.created_at);
-                                const row = document.createElement('div');
-                                row.textContent = `> [${d.toLocaleTimeString()}] ${log.message}`;
-                                logBox.appendChild(row);
-                            });
-                            logBox.scrollTop = logBox.scrollHeight;
+                        const newLogs = await logsRes.json();
+                        if (newLogs.length > 0) {
+                            lastLogId = newLogs[newLogs.length - 1].id;
+                            appendLogs(newLogs);
                         }
                     }
                 } catch (e) { }
 
-                updateStepsFromLogs(fetchedLogs, data.status);
+                updateStepsFromLogs(data.status);
 
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
+                    cancelBtn.disabled = true;
                     completeMsg.classList.remove('hidden');
                     setTimeout(() => {
                         window.location.href = `/dashboard/${scanId}`;
                     }, 2000);
                 } else if (data.status === 'failed') {
                     clearInterval(pollInterval);
+                    cancelBtn.disabled = true;
                     failMsg.classList.remove('hidden');
+                } else if (data.status === 'cancelled') {
+                    clearInterval(pollInterval);
+                    cancelBtn.disabled = true;
+                    cancelMsg.classList.remove('hidden');
                 }
-            } catch { /* retry next interval */ }
+            } catch {
+                consecutiveFailures++;
+                if (consecutiveFailures >= 5) {
+                    clearInterval(pollInterval);
+                    document.getElementById('errorMsgDetail').textContent = 'Lost connection to the server.';
+                    errorMsg.classList.remove('hidden');
+                }
+            }
         }
 
         const pollInterval = setInterval(poll, 2000);
@@ -441,8 +624,8 @@
     </script>
 
     <!-- Qubitsense AI Agent Widget -->
-    <link rel="stylesheet" href="/css/ai-agent.css?v=4">
-    <script src="/components/ai-agent.js?v=4"></script>
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+    <script src="/components/ai-agent.js?v=10"></script>
 
 </body>
 

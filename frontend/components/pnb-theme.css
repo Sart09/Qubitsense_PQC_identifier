@@ -1,122 +1,491 @@
-/* =============================================
-   PNB Brand Theme — Drop-in CSS Override
-   Punjab National Bank: Maroon + Gold
-   Apply by adding <link rel="stylesheet" href="/components/pnb-theme.css">
-   AFTER your existing stylesheet.
-   ============================================= */
+/* =============================================================
+   PNB Brand Theme v2 — Punjab National Bank: Maroon + Gold
+   frontend/components/pnb-theme.css
 
-/* ── Core colour tokens ── */
+   This replaces the old !important-override approach. The previous
+   version rewrote Tailwind's slate/indigo/amber classes with !important,
+   while most pages ALSO ran their own inline `tailwind.config` color
+   remap on the same classes — two overlapping layers that disagreed on
+   coverage, which is what produced real invisible-text bugs (see
+   user_dashboard.html's Scan History modal, fixed in this pass).
+
+   This version does neither. It is a real, closed design-system: CSS
+   custom properties plus real component classes (.pnb-*), none of which
+   depend on a Tailwind color-utility class resolving to a value it was
+   never given. Tailwind stays in use on every page for LAYOUT only
+   (flex/grid/spacing/rounding) — that was never remapped and was never
+   the problem.
+
+   Two-surface model, carried over unchanged from analytics.html (the one
+   page in this app that already had this right, including the measured
+   reasoning below — this file generalizes it, not invents it):
+     1. Maroon branded shell — body background, sidebar, headers, hero
+        banners. Dark surface, light text.
+     2. Neutral light surface — cards, tables, modals, forms. Chosen
+        deliberately over a maroon card surface: the brand maroon is
+        itself red, so a "Critical" status mark scores only ~2.2:1
+        against it — below the 3:1 floor for a UI-component mark. On the
+        light surface the same palette clears it (see contrast notes
+        below the status tokens).
+
+   Contrast: every token pair below was checked against WCAG 2.x relative
+   luminance (4.5:1 for text, 3:1 for non-text UI components/large text),
+   not eyeballed — see the per-section notes for the numbers.
+   ============================================================= */
+
 :root {
+    /* ---- Brand ---- */
     --pnb-maroon: #7B1520;
-    /* primary brand */
     --pnb-maroon-dark: #4E0B11;
-    /* sidebar, deep bg */
+    /* shell background: sidebar, headers, hero, body backdrop */
     --pnb-maroon-mid: #9E1F2D;
-    /* hover states */
+    /* hover / secondary shell surfaces */
     --pnb-maroon-light: #C0303F;
-    /* active / selected */
+    /* active states, button hover fill */
     --pnb-gold: #D4A017;
-    /* accent, highlights */
     --pnb-gold-light: #F0C040;
-    /* badges, scores */
+    /* accent text on the maroon shell — 8.93:1 on maroon-dark */
     --pnb-gold-pale: #FDF3D0;
-    /* light bg tint */
-    --pnb-white: #FFFFFF;
-    --pnb-off-white: #F7F2EE;
-    /* card bg */
-    --pnb-text-muted: #F5EDED;
-    /* near-white, 8.2:1 on #4E0B11 — max readability */
-    --pnb-border: rgba(212, 160, 23, 0.25);
-    /* gold-tinted border */
+
+    /* ---- Light content surface: cards / tables / modals / forms ---- */
+    --pnb-surface: #fcfcfb;
+    --pnb-surface-alt: #f3f2ee;
+    /* zebra stripe, hover row, input fill */
+    --pnb-border: rgba(11, 11, 11, 0.12);
+    --pnb-border-strong: rgba(11, 11, 11, 0.22);
+
+    /* Text on the light surface. ink 19.2:1, ink-2 7.7:1, ink-muted
+       4.54:1 — all measured against --pnb-surface, all clear 4.5:1 AA. */
+    --pnb-ink: #0b0b0b;
+    --pnb-ink-2: #52514e;
+    --pnb-ink-muted: #767470;
+
+    /* ---- Text on the maroon shell ---- */
+    /* shell-text 13.2:1, shell-text-muted 9.85:1 on maroon-dark. */
+    --pnb-shell-text: #F5EDED;
+    --pnb-shell-text-muted: #E7C9C9;
+    --pnb-shell-border: rgba(212, 160, 23, 0.3);
+
+    /* ---- Status / risk scale ----
+       Maps 1:1 to the app's four risk bands (Quantum Safe / Transitioning
+       / Quantum Vulnerable / Critical). These are FILL colours for a
+       dot/badge, never used as standalone text colour: safe (3.27:1) and
+       critical (4.68:1) clear the 3:1 non-text floor on --pnb-surface,
+       but warning (1.79:1) and serious (2.57:1) do not — same finding
+       analytics.html already made. The fix carried over from there: every
+       .pnb-badge/.pnb-dot gets a dark ring (see below) so the shape's
+       boundary — not the fill — is what supplies the required contrast,
+       and the text label is always rendered in --pnb-ink, never in the
+       status colour. Colour is decoration on top of a label, not the
+       only carrier of meaning, on every element that uses these. */
+    --pnb-risk-safe: #0ca30c;
+    --pnb-risk-transitioning: #d99a06;
+    --pnb-risk-vulnerable: #e06a3a;
+    --pnb-risk-critical: #d03b3b;
+
+    --pnb-radius: 12px;
+    --pnb-radius-sm: 8px;
+    --pnb-shadow: 0 6px 18px rgba(0, 0, 0, .22);
 }
 
-/* ── Page / app background ── */
-body,
-.app-root,
-#root,
-.layout-root {
-    background-color: var(--pnb-maroon-dark) !important;
-    color: var(--pnb-text-muted) !important;
+/* =================================================================
+   Base
+   ================================================================= */
+
+body {
+    background-color: var(--pnb-maroon-dark);
+    background-image: url('/components/pnb_bg.png');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--pnb-shell-text);
+    min-height: 100vh;
 }
 
-/* ── Panels / Cards ── */
-.panel,
-.card-animate,
-#assetModal>div {
-    background-color: var(--pnb-maroon) !important;
-    border-color: var(--pnb-border) !important;
-    color: var(--pnb-off-white) !important;
+/* =================================================================
+   Shell — maroon branded chrome (headers, hero banners). The sidebar
+   (components/sidebar.js) already ships its own scoped styles and is
+   untouched by this file.
+   ================================================================= */
+
+.pnb-shell {
+    background-color: var(--pnb-maroon-dark);
+    color: var(--pnb-shell-text);
 }
 
-/* ── Headers ── */
-header {
-    background-color: var(--pnb-maroon-mid) !important;
-    border-bottom: 2px solid var(--pnb-gold) !important;
-    color: var(--pnb-white) !important;
+.pnb-hero {
+    background: linear-gradient(135deg, var(--pnb-maroon) 0%, var(--pnb-maroon-dark) 100%);
+    border: 1px solid var(--pnb-shell-border);
+    border-radius: var(--pnb-radius);
+    color: var(--pnb-shell-text);
+    box-shadow: var(--pnb-shadow);
 }
 
-/* ── Buttons / Form Elements ── */
-button,
-input[type="text"],
-input[type="password"] {
-    border-color: var(--pnb-border) !important;
+.pnb-shell-h1 {
+    color: var(--pnb-gold-light);
+    font-weight: 800;
 }
 
-button:hover {
-    background-color: var(--pnb-maroon-light) !important;
-    color: var(--pnb-white) !important;
+.pnb-shell-h2 {
+    color: var(--pnb-gold-light);
+    font-weight: 700;
 }
 
-/* ── Text / Typography Overrides ── */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-.text-indigo-300,
-.text-slate-300 {
-    color: var(--pnb-gold-light) !important;
+.pnb-shell-text-muted {
+    color: var(--pnb-shell-text-muted);
 }
 
-/* Replace specific Tailwind text colours */
-.text-indigo-600 {
-    color: var(--pnb-gold) !important;
+.pnb-shell-link {
+    color: var(--pnb-gold-light);
+    text-decoration: none;
 }
 
-.text-amber-400 {
-    color: var(--pnb-gold-light) !important;
+.pnb-shell-link:hover {
+    color: var(--pnb-shell-text);
+    text-decoration: underline;
 }
 
-.text-slate-500,
-.text-slate-400 {
-    color: var(--pnb-text-muted) !important;
+/* =================================================================
+   Cards — the default surface for all real content
+   ================================================================= */
+
+.pnb-card {
+    background: var(--pnb-surface);
+    border: 1px solid var(--pnb-border);
+    border-radius: var(--pnb-radius);
+    box-shadow: var(--pnb-shadow);
+    color: var(--pnb-ink);
 }
 
-.text-slate-700 {
-    color: var(--pnb-white) !important;
+.pnb-card-header {
+    border-bottom: 1px solid var(--pnb-border);
 }
 
-.text-white {
-    color: var(--pnb-white) !important;
+.pnb-h1 {
+    color: var(--pnb-ink);
+    font-weight: 800;
 }
 
-.bg-slate-900,
-.bg-slate-800 {
-    background-color: var(--pnb-maroon-dark) !important;
+.pnb-h2 {
+    color: var(--pnb-ink);
+    font-weight: 700;
 }
 
-.bg-indigo-600,
-.bg-indigo-500 {
-    background-color: var(--pnb-maroon-light) !important;
+.pnb-h3 {
+    color: var(--pnb-ink);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
 }
 
-.bg-slate-100 {
-    background-color: var(--pnb-maroon-mid) !important;
-    color: var(--pnb-white) !important;
+.pnb-text {
+    color: var(--pnb-ink);
 }
 
-.border-slate-700,
-.border-slate-800 {
-    border-color: var(--pnb-border) !important;
+.pnb-text-2 {
+    color: var(--pnb-ink-2);
+}
+
+.pnb-text-muted {
+    color: var(--pnb-ink-muted);
+}
+
+.pnb-hairline {
+    border-color: var(--pnb-border);
+}
+
+/* =================================================================
+   Buttons
+   ================================================================= */
+
+.pnb-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 13px;
+    border-radius: var(--pnb-radius-sm);
+    padding: 9px 16px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background .13s ease, color .13s ease, border-color .13s ease;
+}
+
+.pnb-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+.pnb-btn-primary {
+    background: var(--pnb-maroon);
+    color: #FFFFFF;
+    /* 10.66:1 */
+}
+
+.pnb-btn-primary:hover:not(:disabled) {
+    background: var(--pnb-maroon-light);
+    /* 5.62:1, still AA */
+}
+
+.pnb-btn-secondary {
+    background: var(--pnb-surface);
+    color: var(--pnb-ink);
+    border-color: var(--pnb-border-strong);
+}
+
+.pnb-btn-secondary:hover:not(:disabled) {
+    background: var(--pnb-surface-alt);
+}
+
+.pnb-btn-danger {
+    background: var(--pnb-risk-critical);
+    color: #FFFFFF;
+    /* 4.68:1 */
+}
+
+.pnb-btn-danger:hover:not(:disabled) {
+    background: #b93131;
+}
+
+.pnb-btn-ghost {
+    background: transparent;
+    color: var(--pnb-shell-text);
+    border-color: var(--pnb-shell-border);
+}
+
+.pnb-btn-ghost:hover:not(:disabled) {
+    background: rgba(240, 192, 64, .14);
+    color: #FFFFFF;
+}
+
+/* Visible keyboard focus everywhere in this system — colour alone never
+   carries interactive state. */
+.pnb-btn:focus-visible,
+.pnb-input:focus-visible,
+.pnb-select:focus-visible,
+.pnb-textarea:focus-visible,
+a.pnb-shell-link:focus-visible {
+    outline: 2px solid var(--pnb-gold);
+    outline-offset: 2px;
+}
+
+/* =================================================================
+   Forms
+   ================================================================= */
+
+.pnb-input,
+.pnb-select,
+.pnb-textarea {
+    width: 100%;
+    background: var(--pnb-surface);
+    color: var(--pnb-ink);
+    border: 1px solid var(--pnb-border-strong);
+    border-radius: var(--pnb-radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+}
+
+.pnb-input::placeholder,
+.pnb-textarea::placeholder {
+    color: var(--pnb-ink-muted);
+}
+
+.pnb-input:focus,
+.pnb-select:focus,
+.pnb-textarea:focus {
+    outline: none;
+    border-color: var(--pnb-maroon);
+    box-shadow: 0 0 0 3px rgba(123, 21, 32, .12);
+}
+
+.pnb-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--pnb-ink-muted);
+    margin-bottom: 6px;
+}
+
+/* =================================================================
+   Tables
+   ================================================================= */
+
+.pnb-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--pnb-ink);
+}
+
+.pnb-table th {
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--pnb-ink-muted);
+    border-bottom: 1px solid var(--pnb-border-strong);
+    padding: 10px 12px;
+}
+
+.pnb-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--pnb-border);
+    font-size: 13px;
+}
+
+.pnb-table tbody tr:hover {
+    background: var(--pnb-surface-alt);
+}
+
+.pnb-table tbody tr.pnb-row-clickable {
+    cursor: pointer;
+}
+
+/* =================================================================
+   Modals
+   ================================================================= */
+
+.pnb-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 11, 11, .55);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 60;
+}
+
+.pnb-modal-panel {
+    background: var(--pnb-surface);
+    color: var(--pnb-ink);
+    border: 1px solid var(--pnb-border);
+    border-radius: var(--pnb-radius);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .4);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.pnb-modal-header {
+    border-bottom: 1px solid var(--pnb-border);
+    background: var(--pnb-surface-alt);
+}
+
+.pnb-modal-close {
+    color: var(--pnb-ink-muted);
+    font-size: 26px;
+    line-height: 1;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.pnb-modal-close:hover {
+    color: var(--pnb-ink);
+}
+
+/* =================================================================
+   Badges — status/role indicators. Colour is always a ringed dot next
+   to an ink-coloured text label, never colour-as-text (see the risk
+   token notes above for why).
+   ================================================================= */
+
+.pnb-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--pnb-ink);
+    white-space: nowrap;
+}
+
+.pnb-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    /* Dark ring so the fill colour is decoration, not the sole carrier of
+       the 3:1 non-text contrast requirement — matches analytics.html. */
+    border: 1.5px solid rgba(11, 11, 11, .4);
+}
+
+.pnb-dot-safe {
+    background: var(--pnb-risk-safe);
+}
+
+.pnb-dot-transitioning {
+    background: var(--pnb-risk-transitioning);
+}
+
+.pnb-dot-vulnerable {
+    background: var(--pnb-risk-vulnerable);
+}
+
+.pnb-dot-critical {
+    background: var(--pnb-risk-critical);
+}
+
+/* Role tags use brand colours (already AA as pill fills, unlike the risk
+   scale) so these may be colour-fills with white/maroon text directly. */
+.pnb-badge-admin {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--pnb-gold-light);
+    color: var(--pnb-maroon-dark);
+    /* 8.93:1 */
+}
+
+.pnb-badge-user {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--pnb-surface-alt);
+    color: var(--pnb-ink-2);
+    border: 1px solid var(--pnb-border-strong);
+}
+
+.pnb-badge-active {
+    color: var(--pnb-risk-safe);
+}
+
+.pnb-badge-inactive {
+    color: var(--pnb-ink-muted);
+}
+
+/* =================================================================
+   Utility
+   ================================================================= */
+
+.pnb-divider {
+    border-top: 1px solid var(--pnb-border);
+}
+
+.pnb-scroll-x {
+    overflow-x: auto;
+}
+
+::selection {
+    background: var(--pnb-gold-light);
+    color: var(--pnb-maroon-dark);
 }

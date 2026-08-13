@@ -1,16 +1,32 @@
 #!/usr/bin/env python3
 """
-Async Concurrent TLS Scanner v2.0
+Async Concurrent TLS Scanner v3.0
 ==================================
 
-Maximizes subdomain scan success rate with:
-1. Async DNS via aiodns (non-blocking, no event loop starvation)
-2. Pre-scan ghost subdomain filtering
-3. Classified TCP pre-check (open/timeout/refused/dns_failed)
-4. 3-tier Python-native TLS fallback (no OpenSSL subprocess)
-5. Stage-specific timeouts (DNS=5s, TCP=5s, TLS=12s)
-6. Retry logic for transient TLS failures only
-7. Structured failure codes for dashboard reporting
+Native-async TLS scanning, replacing the v2.0 thread-pool-backed handshake.
+
+Why this rewrite exists: v2.0 advertised MAX_CONCURRENT=50 via a semaphore,
+but every handshake ran through ``loop.run_in_executor(None, ...)``, and
+asyncio's default ThreadPoolExecutor is sized ``min(32, cpu_count+4)`` —
+measured at 12 threads on the target machine. 38 of every 50 admitted
+coroutines queued behind 12 real threads, and their wait_for() timeout
+counted down *while queued*, manufacturing false TimeoutErrors for hosts
+that were simply waiting for a thread. This version uses
+``asyncio.open_connection(..., ssl=ctx)`` directly, so concurrency is real
+and bounded only by the semaphore.
+
+Design:
+1. Async DNS via aiodns (non-blocking)
+2. One handshake per host in the common case (was up to 6: 3 tiers x 2
+   retries) via exception classification instead of blind tier cycling
+3. Per-host deadline that starts only AFTER semaphore admission
+4. Parallel port-fallback race (was a 45s sequential sweep), gated on
+   "refused" only — a filtered/timed-out 443 means the whole host drops
+   traffic, racing more ports just buys more timeouts
+5. Streaming results via as_completed (was gather — one slow host no
+   longer sets the wall clock for the whole batch)
+6. Certificate validation from the DER already fetched: SAN names,
+   hostname mismatch, expiry, self-signed — see certificate_parser.py
 """
 
 import asyncio
@@ -19,15 +35,24 @@ import ssl
 import json
 import sys
 import io
+import time
+from dataclasses import dataclass, field
+from typing import AsyncIterator, Dict, List, Optional, Tuple
+from datetime import datetime
 
 # Fix Windows compatibility
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+sys.path.insert(0, __file__.rsplit("\\", 1)[0] if "\\" in __file__ else __file__.rsplit("/", 1)[0])
 
-# ---- Async DNS resolver (FIX 1) ----
+from config import (
+    TLS_CONCURRENCY, DNS_TIMEOUT, TLS_CONNECT_TIMEOUT, TLS_HANDSHAKE_TIMEOUT,
+    HOST_DEADLINE, TLS_RETRIES, TLS_RETRY_DELAY, SCAN_BUDGET_S,
+    FALLBACK_PORTS, PORT_RACE_TIMEOUT, PORT_FALLBACK_MAX_HOSTS,
+)
+
+# ---- Async DNS resolver ----
 try:
     import aiodns
     _HAS_AIODNS = True
@@ -35,17 +60,14 @@ except ImportError:
     _HAS_AIODNS = False
     print("[!] aiodns not installed. Falling back to blocking DNS. Run: pip install aiodns", flush=True)
 
-# ---- Constants (FIX 5) ----
-DNS_TIMEOUT = 5      # seconds for DNS resolution
-TCP_TIMEOUT = 5      # seconds for TCP port check
-TLS_TIMEOUT = 12     # seconds for full TLS handshake
-MAX_CONCURRENT = 50  # async semaphore limit
-TLS_RETRIES = 2      # retry count for transient TLS failures
-TLS_RETRY_DELAY = 1.0  # base delay between retries
+# Backward-compat constants (some callers/tests may still reference these).
+MAX_CONCURRENT = TLS_CONCURRENCY
+TLS_TIMEOUT = TLS_HANDSHAKE_TIMEOUT + TLS_CONNECT_TIMEOUT
+TCP_TIMEOUT = TLS_CONNECT_TIMEOUT
 
 
 # ============================================================================
-# ASYNC DNS RESOLUTION (FIX 1)
+# ASYNC DNS RESOLUTION
 # ============================================================================
 
 async def resolve_hostname(hostname: str, resolver=None) -> Optional[str]:
@@ -60,7 +82,6 @@ async def resolve_hostname(hostname: str, resolver=None) -> Optional[str]:
         except Exception:
             pass  # Fall through to stdlib fallback
 
-    # Fallback: run blocking DNS in executor
     loop = asyncio.get_event_loop()
     try:
         ip = await asyncio.wait_for(
@@ -73,14 +94,13 @@ async def resolve_hostname(hostname: str, resolver=None) -> Optional[str]:
 
 
 # ============================================================================
-# PRE-SCAN GHOST FILTER (FIX 2)
+# PRE-SCAN GHOST FILTER (kept for standalone/library use)
 # ============================================================================
 
 async def filter_live_subdomains(subdomains: List[str]) -> Tuple[List[str], int]:
     """
     Filter out ghost subdomains that have no DNS A record.
     Returns (live_subdomains, ghost_count).
-    Ghost subdomains are NOT counted as scan failures.
     """
     resolver = aiodns.DNSResolver() if _HAS_AIODNS else None
     try:
@@ -105,221 +125,192 @@ async def filter_live_subdomains(subdomains: List[str]) -> Tuple[List[str], int]
 
 
 # ============================================================================
-# TCP PRE-CHECK (FIX 3)
+# SHARED SSL CONTEXTS — built once, not per host
 # ============================================================================
+# ssl.create_default_context() (the old tier-1 context) measured 18.9ms on
+# the target machine — it loads the full Windows CA store. Nothing in the
+# schema records verification status, so a verifying handshake was pure
+# cost: 18.9ms of event-loop stall plus up to two wasted full-timeout
+# handshakes, for a result that was thrown away. Real validation now comes
+# from parsing the DER we fetch regardless (certificate_parser.py).
 
-async def tcp_check(hostname: str, ip: str, port: int = 443) -> str:
-    """
-    Fast TCP connectivity check. Returns a classified status string.
-    
-    Returns: "open" | "timeout" | "refused"
-    Caller should have already resolved DNS before calling this.
-    """
-    try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port),
-            timeout=TCP_TIMEOUT
-        )
-        writer.close()
-        await writer.wait_closed()
-        return "open"
-    except asyncio.TimeoutError:
-        return "timeout"
-    except ConnectionRefusedError:
-        return "refused"
-    except OSError as e:
-        err_str = str(e).lower()
-        # Windows-specific error codes
-        if hasattr(e, 'winerror'):
-            if e.winerror == 10060:
-                return "timeout"
-            if e.winerror == 10061:
-                return "refused"
-        if "10060" in err_str or "timeout" in err_str or "timed out" in err_str:
-            return "timeout"
-        if "10061" in err_str or "refused" in err_str:
-            return "refused"
-        return "refused"
-    except Exception:
-        return "refused"
+_CTX_MAIN: Optional[ssl.SSLContext] = None
+_CTX_LEGACY: Optional[ssl.SSLContext] = None
 
 
-# ============================================================================
-# 3-TIER TLS HANDSHAKE (FIX 4)
-# ============================================================================
-
-async def _attempt_tls(
-    hostname: str, ip: str, port: int, context: ssl.SSLContext, sni_hostname: str = None
-) -> Tuple[bool, Optional[str], Optional[str], Optional[bytes]]:
-    """
-    Perform a single TLS handshake attempt.
-    Returns (success, tls_version, cipher_suite, der_cert).
-    """
-    sni = sni_hostname or hostname
-    conn = None
-    try:
-        # Open raw TCP connection to IP
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port, ssl=False),
-            timeout=TCP_TIMEOUT
-        )
-
-        # Upgrade to TLS
-        loop = asyncio.get_event_loop()
-        transport = writer.transport
-        raw_sock = transport.get_extra_info('socket')
-
-        # We need to do TLS wrapping in an executor since ssl.wrap_socket
-        # is blocking. Use the lower-level approach.
-        def do_tls_handshake():
-            tls_sock = context.wrap_socket(raw_sock, server_hostname=sni, do_handshake_on_connect=True)
-            cipher_info = tls_sock.cipher()
-            tls_ver = tls_sock.version()
-            der = tls_sock.getpeercert(binary_form=True)
-            return tls_ver, cipher_info, der, tls_sock
-
-        tls_ver, cipher_info, der, tls_sock = await asyncio.wait_for(
-            loop.run_in_executor(None, do_tls_handshake),
-            timeout=TLS_TIMEOUT
-        )
-
-        cipher_name = cipher_info[0] if cipher_info else None
-        # Close TLS socket
+def _ctx_main() -> ssl.SSLContext:
+    global _CTX_MAIN
+    if _CTX_MAIN is None:
+        c = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        c.check_hostname = False
+        c.verify_mode = ssl.CERT_NONE
         try:
-            tls_sock.close()
-        except Exception:
+            c.minimum_version = ssl.TLSVersion.TLSv1
+        except (ValueError, AttributeError):
             pass
-
-        if tls_ver and cipher_name:
-            return True, tls_ver, cipher_name, der
-        return False, tls_ver, None, None
-
-    except Exception:
-        return False, None, None, None
+        _CTX_MAIN = c
+    return _CTX_MAIN
 
 
-async def _attempt_tls_direct(
-    hostname: str, ip: str, port: int, context: ssl.SSLContext
-) -> Tuple[bool, Optional[str], Optional[str], Optional[bytes]]:
-    """
-    Direct socket-based TLS handshake. More reliable than stream-based for
-    some server configurations.
-    """
-    loop = asyncio.get_event_loop()
-
-    def do_handshake():
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(TLS_TIMEOUT)
+def _ctx_legacy() -> ssl.SSLContext:
+    global _CTX_LEGACY
+    if _CTX_LEGACY is None:
+        c = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        c.check_hostname = False
+        c.verify_mode = ssl.CERT_NONE
         try:
-            sock.connect((ip, port))
-            tls_sock = context.wrap_socket(sock, server_hostname=hostname, do_handshake_on_connect=True)
-            cipher_info = tls_sock.cipher()
-            tls_ver = tls_sock.version()
-            der = tls_sock.getpeercert(binary_form=True)
-            tls_sock.close()
-            return tls_ver, cipher_info, der
-        except Exception:
+            c.set_ciphers("ALL:@SECLEVEL=0")
+        except ssl.SSLError:
+            c.set_ciphers("ALL")
+        _CTX_LEGACY = c
+    return _CTX_LEGACY
+
+
+# ============================================================================
+# SINGLE HANDSHAKE PRIMITIVE + EXCEPTION CLASSIFICATION
+# ============================================================================
+
+@dataclass(slots=True)
+class HandshakeResult:
+    ok: bool
+    tls_version: Optional[str] = None
+    cipher: Optional[str] = None
+    der: Optional[bytes] = None
+    action: str = "dead"   # ok | retry | downgrade | dead | not_tls | refused | timeout
+    code: str = "TLS_HANDSHAKE_FAIL"
+    detail: str = ""
+
+
+async def _handshake(ip: str, port: int, sni: str, ctx: ssl.SSLContext) -> HandshakeResult:
+    writer = None
+    try:
+        coro = asyncio.open_connection(
+            ip, port,
+            ssl=ctx,
+            server_hostname=sni,
+            ssl_handshake_timeout=TLS_HANDSHAKE_TIMEOUT,
+        )
+        reader, writer = await asyncio.wait_for(
+            coro, timeout=TLS_CONNECT_TIMEOUT + TLS_HANDSHAKE_TIMEOUT
+        )
+        sobj = writer.get_extra_info("ssl_object")
+        if sobj is None:
+            return HandshakeResult(False, action="retry", code="TLS_NO_SSL_OBJECT")
+        cipher = sobj.cipher()
+        return HandshakeResult(
+            ok=True,
+            tls_version=sobj.version(),
+            cipher=cipher[0] if cipher else None,
+            der=sobj.getpeercert(binary_form=True),
+            action="ok",
+            code="OK",
+        )
+    except BaseException as e:
+        return _classify(e)
+    finally:
+        if writer is not None:
+            # abort() skips the close_notify round trip and cannot hang —
+            # close()+wait_closed() can block on a server that never sends
+            # close_notify, which matters when doing this hundreds of times.
             try:
-                sock.close()
+                writer.transport.abort()
             except Exception:
                 pass
-            raise
 
+
+_DOWNGRADE_REASONS = frozenset({
+    "WRONG_VERSION_NUMBER", "UNSUPPORTED_PROTOCOL", "NO_PROTOCOLS_AVAILABLE",
+    "TLSV1_ALERT_PROTOCOL_VERSION", "VERSION_TOO_LOW", "UNSUPPORTED_PROTOCOL_VERSION",
+    "SSLV3_ALERT_HANDSHAKE_FAILURE", "HANDSHAKE_FAILURE", "NO_SHARED_CIPHER",
+    "DH_KEY_TOO_SMALL", "EE_KEY_TOO_SMALL", "CA_MD_TOO_WEAK",
+    "UNSAFE_LEGACY_RENEGOTIATION_DISABLED", "NO_CIPHERS_AVAILABLE",
+    "SSLV3_ALERT_ILLEGAL_PARAMETER", "TLSV1_ALERT_INSUFFICIENT_SECURITY",
+})
+_TRANSIENT_REASONS = frozenset({
+    "TLSV1_ALERT_INTERNAL_ERROR", "BAD_RECORD_MAC", "DECRYPT_ERROR",
+    "TLSV1_ALERT_USER_CANCELLED", "PACKET_LENGTH_TOO_LONG",
+})
+_NOT_TLS_REASONS = frozenset({
+    "UNEXPECTED_EOF_WHILE_READING", "HTTP_REQUEST", "HTTPS_PROXY_REQUEST",
+})
+
+
+def _classify(e: BaseException) -> HandshakeResult:
+    """Turn a raw exception into a routing decision instead of a bare False."""
+    if isinstance(e, asyncio.CancelledError):
+        raise e  # never swallow cancellation
+
+    if isinstance(e, (asyncio.TimeoutError, TimeoutError)):
+        return HandshakeResult(False, action="timeout", code="TCP_TIMEOUT",
+                                detail="connect/handshake timed out")
+
+    if isinstance(e, ConnectionRefusedError):
+        return HandshakeResult(False, action="refused", code="TCP_REFUSED",
+                                detail="connection refused")
+
+    if isinstance(e, socket.gaierror):
+        return HandshakeResult(False, action="dead", code="DNS_NO_RECORD", detail=str(e))
+
+    if isinstance(e, ssl.SSLCertVerificationError):
+        # Unreachable with CERT_NONE contexts; kept defensively.
+        return HandshakeResult(False, action="downgrade", code="CERT_INVALID", detail=str(e))
+
+    if isinstance(e, ssl.SSLZeroReturnError):
+        return HandshakeResult(False, action="retry", code="TLS_ZERO_RETURN")
+
+    if isinstance(e, ssl.SSLError):
+        reason = (getattr(e, "reason", "") or "").upper()
+        blob = f"{reason} {e}".upper()
+        if reason in _DOWNGRADE_REASONS or any(r in blob for r in _DOWNGRADE_REASONS):
+            return HandshakeResult(False, action="downgrade",
+                                    code="TLS_LEGACY_CIPHER", detail=reason or str(e)[:80])
+        if reason in _NOT_TLS_REASONS or "EOF OCCURRED IN VIOLATION" in blob:
+            return HandshakeResult(False, action="not_tls",
+                                    code="NOT_TLS", detail=reason or "plaintext service")
+        if reason in _TRANSIENT_REASONS:
+            return HandshakeResult(False, action="retry",
+                                    code="TLS_TRANSIENT", detail=reason)
+        return HandshakeResult(False, action="downgrade",
+                                code="TLS_HANDSHAKE_FAIL", detail=reason or str(e)[:80])
+
+    if isinstance(e, OSError):
+        win = getattr(e, "winerror", None)
+        if win == 10060:
+            return HandshakeResult(False, action="timeout", code="TCP_TIMEOUT")
+        if win == 10061:
+            return HandshakeResult(False, action="refused", code="TCP_REFUSED")
+        if win == 10054:
+            # RST mid-handshake — overwhelmingly a TLS-version reject on
+            # hardened appliances. Worth one legacy attempt.
+            return HandshakeResult(False, action="downgrade", code="TLS_RESET")
+        if win in (10051, 10065, 10013):
+            return HandshakeResult(False, action="dead", code="TCP_UNREACHABLE")
+        return HandshakeResult(False, action="retry", code="TCP_ERROR", detail=str(e)[:80])
+
+    return HandshakeResult(False, action="retry", code="INTERNAL",
+                            detail=f"{type(e).__name__}: {e}"[:120])
+
+
+async def _race_ports(ip: str, sni: str, ports: Tuple[int, ...], ctx: ssl.SSLContext
+                       ) -> Optional[Tuple[int, HandshakeResult]]:
+    """Race fallback ports in parallel (was a 45s sequential sweep). Cancels losers."""
+    if not ports:
+        return None
+    tasks = {asyncio.create_task(_handshake(ip, p, sni, ctx)): p for p in ports}
     try:
-        tls_ver, cipher_info, der = await asyncio.wait_for(
-            loop.run_in_executor(None, do_handshake),
-            timeout=TLS_TIMEOUT + 2  # small buffer over socket timeout
+        done, pending = await asyncio.wait(
+            tasks, timeout=PORT_RACE_TIMEOUT, return_when=asyncio.ALL_COMPLETED
         )
-        cipher_name = cipher_info[0] if cipher_info else None
-        if tls_ver and cipher_name:
-            return True, tls_ver, cipher_name, der
-        return False, tls_ver, None, None
-    except Exception as e:
-        print(f"    [!] _attempt_tls_direct error for {hostname}: {str(e.__class__.__name__)}: {str(e)}", flush=True)
-        return False, None, None, None
-
-
-def _make_tier1_context() -> ssl.SSLContext:
-    """Tier 1: Standard TLS (SNI ON, cert verification ON, TLSv1.2+)."""
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = True
-    ctx.verify_mode = ssl.CERT_REQUIRED
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    return ctx
-
-
-def _make_tier2_context() -> ssl.SSLContext:
-    """Tier 2: Permissive TLS (SNI ON, cert verification OFF, TLSv1+)."""
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    try:
-        ctx.minimum_version = ssl.TLSVersion.TLSv1
-    except (ValueError, AttributeError):
-        # Some builds don't allow TLSv1 minimum
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    return ctx
-
-
-def _make_tier3_context() -> ssl.SSLContext:
-    """Tier 3: Legacy TLS (weak ciphers, no verification, accept anything)."""
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    try:
-        ctx.set_ciphers('ALL:@SECLEVEL=0')
-    except ssl.SSLError:
-        ctx.set_ciphers('ALL')  # Fallback if SECLEVEL not supported
-    # Don't set minimum_version — accept TLS 1.0 and SSLv3 servers
-    return ctx
-
-
-# ============================================================================
-# TLS WITH RETRY (FIX 6)
-# ============================================================================
-
-async def tls_scan_with_fallback(
-    hostname: str, ip: str, port: int = 443
-) -> Dict:
-    """
-    Scan a single host through the 3-tier TLS fallback chain with retry logic.
-    Returns a result dict with either success data or a structured failure_code.
-    """
-    tiers = [
-        ("tier1_standard", _make_tier1_context()),
-        ("tier2_permissive", _make_tier2_context()),
-        ("tier3_legacy", _make_tier3_context()),
-    ]
-
-    last_error = ""
-
-    for tier_name, ctx in tiers:
-        for attempt in range(TLS_RETRIES):
-            success, tls_ver, cipher, der = await _attempt_tls_direct(
-                hostname, ip, port, ctx
-            )
-
-            if success:
-                return {
-                    "status": "success",
-                    "tls_version": tls_ver,
-                    "cipher_suite": cipher,
-                    "der_cert": der,
-                    "method": tier_name,
-                }
-
-            # Only retry on transient failures (not on first tier cert errors)
-            if attempt < TLS_RETRIES - 1:
-                await asyncio.sleep(TLS_RETRY_DELAY * (attempt + 1))
-            else:
-                print(f"    [{tier_name}] Failed after {TLS_RETRIES} attempts", flush=True)
-
-    # All tiers exhausted — determine the most specific failure code
-    return {
-        "status": "failed",
-        "failure_code": "TLS_HANDSHAKE_FAIL",
-        "error": "All 3 TLS tiers failed after retries",
-    }
+        for t in done:
+            r = t.result()
+            if r.ok:
+                return tasks[t], r
+        return None
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ============================================================================
@@ -327,107 +318,136 @@ async def tls_scan_with_fallback(
 # ============================================================================
 
 class AsyncTLSScanner:
-    """Async TLS scanner with concurrent connections and structured failure codes."""
+    """Async TLS scanner: one handshake per host in the common case, real concurrency."""
 
-    def __init__(self, max_concurrent: int = MAX_CONCURRENT, timeout: int = TLS_TIMEOUT):
+    def __init__(self, max_concurrent: int = TLS_CONCURRENCY, timeout: float = HOST_DEADLINE,
+                 port_fallback: Optional[bool] = None, budget_s: float = SCAN_BUDGET_S):
         self.max_concurrent = max_concurrent
-        self.timeout = timeout
+        self.host_deadline = timeout
+        self.budget_s = budget_s
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.resolver = aiodns.DNSResolver() if _HAS_AIODNS else None
+        self._loop = None
+        self._deadline = None
+        self._port_fallback = port_fallback  # resolved per-batch in scan_stream if None
+
+    async def _scan_one(self, hostname: str) -> Dict:
+        result = {
+            "hostname": hostname,
+            "port": 443,
+            "timestamp": datetime.now().isoformat(),
+            "ip_address": None,
+            "tls_version": None,
+            "cipher_suite": None,
+            "der_cert": None,
+            "status": "failed",
+            "method": None,
+            "error": None,
+            "failure_code": None,
+            "attempts": 0,
+        }
+
+        ip = await resolve_hostname(hostname, self.resolver)
+        if not ip:
+            result["error"] = "DNS Resolution Failed"
+            result["failure_code"] = "DNS_NO_RECORD"
+            return result
+        result["ip_address"] = ip
+
+        port = 443
+        attempts = 1
+        r = await _handshake(ip, port, hostname, _ctx_main())
+
+        if r.action == "retry":
+            await asyncio.sleep(TLS_RETRY_DELAY)
+            attempts += 1
+            r = await _handshake(ip, port, hostname, _ctx_main())
+
+        if not r.ok and r.action in ("downgrade", "retry"):
+            attempts += 1
+            r = await _handshake(ip, port, hostname, _ctx_legacy())
+
+        if not r.ok and r.action == "refused" and self._port_fallback:
+            attempts += len(FALLBACK_PORTS)
+            raced = await _race_ports(ip, hostname, FALLBACK_PORTS, _ctx_main())
+            if raced:
+                port, r = raced
+
+        result["attempts"] = attempts
+
+        if r.ok:
+            result.update(
+                status="success", port=port,
+                tls_version=r.tls_version, cipher_suite=r.cipher, der_cert=r.der,
+                method="legacy" if r.code == "TLS_LEGACY_CIPHER" else "standard",
+            )
+        else:
+            result.update(port=port, error=r.detail or r.code, failure_code=r.code)
+
+        return result
 
     async def scan_hostname(self, hostname: str) -> Dict:
-        """
-        Scan a single hostname through the full pipeline:
-        DNS → TCP check → 3-tier TLS with retry.
-        Returns a structured result dict.
-        """
-        async with self.semaphore:
-            result = {
-                "hostname": hostname,
-                "port": 443,
-                "timestamp": datetime.now().isoformat(),
-                "ip_address": None,
-                "tls_version": None,
-                "cipher_suite": None,
-                "der_cert": None,
-                "status": "failed",
-                "method": None,
-                "error": None,
-                "failure_code": None,
+        """Scan one host, respecting the per-host deadline. Clock starts only
+        after semaphore admission — this is the fix for the queue-starvation
+        bug where a timeout counted down while a host waited its turn."""
+        if self._loop is None:
+            self._loop = asyncio.get_event_loop()
+        if self._deadline is not None and self._loop.time() > self._deadline:
+            return {
+                "hostname": hostname, "port": 443, "ip_address": None,
+                "tls_version": None, "cipher_suite": None, "der_cert": None,
+                "status": "failed", "method": None,
+                "error": "global scan budget exhausted", "failure_code": "BUDGET_EXCEEDED",
             }
+        async with self.semaphore:
+            try:
+                return await asyncio.wait_for(self._scan_one(hostname), self.host_deadline)
+            except (asyncio.TimeoutError, TimeoutError):
+                return {
+                    "hostname": hostname, "port": 443, "ip_address": None,
+                    "tls_version": None, "cipher_suite": None, "der_cert": None,
+                    "status": "failed", "method": None,
+                    "error": f"exceeded {self.host_deadline}s host budget",
+                    "failure_code": "HOST_DEADLINE",
+                }
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                return {
+                    "hostname": hostname, "port": 443, "ip_address": None,
+                    "tls_version": None, "cipher_suite": None, "der_cert": None,
+                    "status": "failed", "method": None,
+                    "error": f"{type(e).__name__}: {e}"[:150], "failure_code": "INTERNAL",
+                }
 
-            print(f"\n[*] Scanning {hostname}...", flush=True)
+    async def scan_stream(self, hostnames: List[str]) -> AsyncIterator[Dict]:
+        """Yield results as they complete (was gather — one slow host no
+        longer holds up the whole batch's wall clock)."""
+        loop = asyncio.get_event_loop()
+        self._loop = loop
+        self._deadline = loop.time() + self.budget_s
+        if self._port_fallback is None:
+            self._port_fallback = len(hostnames) <= PORT_FALLBACK_MAX_HOSTS
 
-            # Stage 1: DNS Resolution
-            ip = await resolve_hostname(hostname, self.resolver)
-            if not ip:
-                result["error"] = "DNS Resolution Failed"
-                result["failure_code"] = "DNS_NO_RECORD"
-                print(f"  [✗] DNS failed for {hostname}", flush=True)
-                return result
-
-            result["ip_address"] = ip
-            print(f"  [✓] Resolved to {ip}", flush=True)
-
-            # Stage 2: TCP Pre-Check & Multi-Port Fallback Algorithm
-            tcp_status = await tcp_check(hostname, ip, 443)
-            scan_port = 443
-
-            if tcp_status != "open":
-                fallback_ports = [8443, 4433, 9443, 2083, 2087, 8080, 8888]
-                print(f"  [!] Port 443 {tcp_status} - Initiating Multi-Port Fallback sweep for {hostname}...", flush=True)
-                for fport in fallback_ports:
-                    f_status = await tcp_check(hostname, ip, fport)
-                    if f_status == "open":
-                        print(f"  [+] WAF/Firewall Bypass Success: Port {fport} OPEN for {hostname}!", flush=True)
-                        scan_port = fport
-                        tcp_status = "open"
-                        break
-
-            if tcp_status == "timeout":
-                result["error"] = "Connection Timeout (Scanned all fallback ports)"
-                result["failure_code"] = "TCP_TIMEOUT"
-                print(f"  [✗] Connection Timeout for {hostname} on all ports (Definitively Air-gapped/Internal)", flush=True)
-                return result
-            elif tcp_status == "refused":
-                result["error"] = "Connection Refused (All Ports)"
-                result["failure_code"] = "TCP_REFUSED"
-                print(f"  [✗] Connection Refused for {hostname} on all fallback ports", flush=True)
-                return result
-
-            result["port"] = scan_port
-
-            # Stage 3: 3-Tier TLS Handshake with Retry
-            print(f"  [·] TCP open on port {scan_port}, attempting TLS handshake...", flush=True)
-            tls_result = await tls_scan_with_fallback(hostname, ip, scan_port)
-
-            if tls_result["status"] == "success":
-                result["tls_version"] = tls_result["tls_version"]
-                result["cipher_suite"] = tls_result["cipher_suite"]
-                result["der_cert"] = tls_result["der_cert"]
-                result["status"] = "success"
-                result["method"] = tls_result["method"]
-                cipher_short = tls_result["cipher_suite"][:40] if tls_result["cipher_suite"] else "?"
-                print(f"  [✓] {tls_result['method']}: {tls_result['tls_version']} - {cipher_short}", flush=True)
-            else:
-                result["error"] = tls_result.get("error", "TLS handshake failed")
-                result["failure_code"] = tls_result.get("failure_code", "TLS_HANDSHAKE_FAIL")
-                print(f"  [✗] All TLS tiers failed for {hostname}", flush=True)
-
-            return result
-
-    async def scan_all_concurrent(self, hostnames: List[str]) -> List[Dict]:
-        """Scan all hostnames concurrently with semaphore limiting."""
         print(f"\n[*] Starting concurrent scan of {len(hostnames)} hosts...", flush=True)
         print(f"[*] Max concurrent connections: {self.max_concurrent}", flush=True)
-        print(f"[*] Timeouts: DNS={DNS_TIMEOUT}s, TCP={TCP_TIMEOUT}s, TLS={TLS_TIMEOUT}s", flush=True)
-        print(f"[*] TLS retries per tier: {TLS_RETRIES}", flush=True)
-        est_time = max(10, (len(hostnames) // self.max_concurrent) * 8)
-        print(f"[*] Estimated time: {est_time}s\n", flush=True)
+        print(f"[*] Per-host deadline: {self.host_deadline}s | Scan budget: {self.budget_s}s", flush=True)
+        print(f"[*] Port fallback race: {'enabled' if self._port_fallback else 'disabled (large batch)'}\n",
+              flush=True)
 
-        tasks = [self.scan_hostname(hostname) for hostname in hostnames]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        return results
+        tasks = [asyncio.create_task(self.scan_hostname(h)) for h in hostnames]
+        try:
+            for fut in asyncio.as_completed(tasks):
+                yield await fut
+        finally:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def scan_all_concurrent(self, hostnames: List[str]) -> List[Dict]:
+        """Backward-compat wrapper: collect scan_stream() into a list."""
+        return [r async for r in self.scan_stream(hostnames)]
 
 
 # ============================================================================
@@ -464,7 +484,6 @@ def discover_subdomains_ct_logs(domain: str) -> List[str]:
 # ============================================================================
 
 def print_summary(results: List[Dict]):
-
     """Print scan summary with failure code breakdown."""
     print(f"\n\n{'='*70}", flush=True)
     print("CONCURRENT SCAN SUMMARY", flush=True)
@@ -487,7 +506,6 @@ def print_summary(results: List[Dict]):
             print(f"    └─ Method: {method_short}", flush=True)
 
     if failed:
-        # Group by failure code
         from collections import Counter
         code_counts = Counter(r.get("failure_code", "UNKNOWN") for r in failed)
         print(f"\n✗ FAILED SCANS: ({len(failed)})", flush=True)
@@ -514,19 +532,17 @@ async def main():
     domain = sys.argv[1]
 
     print(f"\n{'='*70}")
-    print("ASYNC CONCURRENT TLS SCANNER v2.0")
+    print("ASYNC CONCURRENT TLS SCANNER v3.0")
     print(f"Domain: {domain}")
     print(f"Timestamp: {datetime.now().isoformat()}")
     print(f"{'='*70}\n")
 
-    # Discover subdomains
     subdomains = discover_subdomains_ct_logs(domain)
     if not subdomains:
         subdomains = [domain]
 
     print(f"[✓] Raw subdomains discovered: {len(subdomains)}")
 
-    # Filter ghosts
     live_subs, ghost_count = await filter_live_subdomains(subdomains)
     print(f"[✓] Live subdomains (DNS resolved): {len(live_subs)}")
     print(f"[i] Ghost subdomains filtered out: {ghost_count}")
@@ -539,18 +555,15 @@ async def main():
     if len(live_subs) > 20:
         print(f"    ... and {len(live_subs)-20} more")
 
-    # Scan
-    scanner = AsyncTLSScanner(max_concurrent=MAX_CONCURRENT, timeout=TLS_TIMEOUT)
+    scanner = AsyncTLSScanner()
     start_time = datetime.now()
     results = await scanner.scan_all_concurrent(live_subs)
     elapsed = (datetime.now() - start_time).total_seconds()
 
-    # Report
     print_summary(results)
     print(f"\n[✓] Scan completed in {elapsed:.1f} seconds")
     print(f"[✓] Average per hostname: {elapsed/max(1,len(results)):.1f}s")
 
-    # Save results (strip bytes for JSON serialization)
     output_file = f"tls_scan_async_{domain.replace('.', '_')}.json"
     json_results = [{k: v for k, v in r.items() if k != "der_cert"} for r in results]
     with open(output_file, 'w') as f:

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Console — Quantum Proof System Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
+    <meta name="description" content="Admin console — user directory, roles, and platform-wide activity." />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/components/pnb-theme.css">
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .stat-tile {
+            min-width: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="max-w-7xl mx-auto px-6 py-10">
+        <h1 class="text-2xl font-extrabold pnb-shell-h1 mb-1">Admin Console</h1>
+        <p class="text-sm pnb-shell-text-muted mb-8">Every user, their activity, and platform-wide statistics.</p>
+
+        <div id="deniedGate" class="hidden pnb-card rounded-2xl p-8 text-center">
+            <p class="pnb-text mb-2" id="deniedMsg">You need admin privileges to view this page.</p>
+            <a href="/user-dashboard" class="pnb-btn pnb-btn-primary inline-flex px-5 py-2.5 mt-2">Back to My Domains</a>
+        </div>
+
+        <div id="adminContent" class="hidden space-y-6">
+            <!-- Fleet stats -->
+            <section class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4" id="statsRow">
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">Total Users</p>
+                    <p id="statTotalUsers" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">Admins</p>
+                    <p id="statAdminCount" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">Total Scans</p>
+                    <p id="statTotalScans" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">Scans Today</p>
+                    <p id="statScansToday" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">Active (7d)</p>
+                    <p id="statActive7d" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+                <div class="pnb-card rounded-2xl p-4 stat-tile">
+                    <p class="pnb-label" style="margin-bottom:4px;">MFA Adoption</p>
+                    <p id="statMfaRate" class="text-2xl font-extrabold pnb-text">-</p>
+                </div>
+            </section>
+
+            <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                <!-- User directory -->
+                <section class="pnb-card rounded-2xl p-6 xl:col-span-3">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                        <h2 class="pnb-h2 text-base">User Directory</h2>
+                        <input id="userSearch" type="text" placeholder="Search email…" oninput="renderUsers()"
+                            class="pnb-input" style="max-width:220px;" />
+                    </div>
+                    <div class="pnb-scroll-x" style="max-height:520px; overflow-y:auto;">
+                        <table class="pnb-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>MFA</th>
+                                    <th>Scans</th>
+                                    <th>Last Login</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center py-8 pnb-text-muted">Loading users…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Activity feed -->
+                <section class="pnb-card rounded-2xl p-6 xl:col-span-2">
+                    <h2 class="pnb-h2 text-base mb-4">Platform Activity</h2>
+                    <div id="activityFeed" class="space-y-3" style="max-height:520px; overflow-y:auto;">
+                        <p class="text-sm pnb-text-muted">Loading activity…</p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- User detail modal -->
+    <div id="userModal" class="pnb-modal-backdrop hidden">
+        <div class="pnb-modal-panel w-full max-w-2xl">
+            <div class="pnb-modal-header flex items-center justify-between p-5">
+                <h3 class="pnb-h2 text-base" id="userModalTitle">User</h3>
+                <button class="pnb-modal-close" onclick="closeUserModal()">&times;</button>
+            </div>
+            <div class="p-5 space-y-5">
+                <div>
+                    <h4 class="pnb-h3 mb-2">Scans</h4>
+                    <div id="userModalScans" class="text-sm pnb-text-2 space-y-1"></div>
+                </div>
+                <div>
+                    <h4 class="pnb-h3 mb-2">Login &amp; MFA Activity</h4>
+                    <div id="userModalActivity" class="text-sm pnb-text-2 space-y-1"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/components/sidebar.js"></script>
+    <script>
+        const token = localStorage.getItem('token');
+        let allUsers = [];
+
+        function authHeaders() {
+            return { 'Authorization': 'Bearer ' + token };
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '—';
+            try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+        }
+
+        function roleBadge(role) {
+            return role === 'admin'
+                ? '<span class="pnb-badge-admin">Admin</span>'
+                : '<span class="pnb-badge-user">User</span>';
+        }
+
+        function statusBadge(active) {
+            return active
+                ? '<span class="pnb-badge"><span class="pnb-dot pnb-dot-safe"></span><span class="pnb-badge-active">Active</span></span>'
+                : '<span class="pnb-badge"><span class="pnb-dot pnb-dot-critical"></span><span class="pnb-badge-inactive">Disabled</span></span>';
+        }
+
+        async function loadStats() {
+            const res = await fetch('/admin/stats', { headers: authHeaders() });
+            if (!res.ok) return;
+            const s = await res.json();
+            document.getElementById('statTotalUsers').textContent = s.total_users;
+            document.getElementById('statAdminCount').textContent = s.admin_count;
+            document.getElementById('statTotalScans').textContent = s.total_scans;
+            document.getElementById('statScansToday').textContent = s.scans_today;
+            document.getElementById('statActive7d').textContent = s.active_users_7d;
+            document.getElementById('statMfaRate').textContent = s.mfa_adoption_rate + '%';
+        }
+
+        function renderUsers() {
+            const q = (document.getElementById('userSearch').value || '').toLowerCase();
+            const rows = allUsers
+                .filter(u => u.email.toLowerCase().includes(q))
+                .map(u => `
+                    <tr>
+                        <td class="font-mono">${u.email}</td>
+                        <td>${roleBadge(u.role)}</td>
+                        <td>${statusBadge(u.is_active)}</td>
+                        <td>${u.mfa_enabled ? '✓' : '—'}</td>
+                        <td>${u.scan_count}</td>
+                        <td class="text-xs pnb-text-muted">${fmtDate(u.last_login_at)}</td>
+                        <td class="text-xs">
+                            <button onclick="viewUser(${u.id})" class="pnb-btn pnb-btn-secondary" style="padding:5px 10px;font-size:11px;">View</button>
+                            <button onclick="toggleRole(${u.id}, '${u.role}')" class="pnb-btn pnb-btn-secondary" style="padding:5px 10px;font-size:11px;">
+                                ${u.role === 'admin' ? 'Demote' : 'Promote'}
+                            </button>
+                            <button onclick="toggleStatus(${u.id}, ${u.is_active})" class="pnb-btn ${u.is_active ? 'pnb-btn-danger' : 'pnb-btn-secondary'}" style="padding:5px 10px;font-size:11px;">
+                                ${u.is_active ? 'Disable' : 'Enable'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            document.getElementById('usersTableBody').innerHTML = rows || '<tr><td colspan="7" class="text-center py-8 pnb-text-muted">No users match.</td></tr>';
+        }
+
+        async function loadUsers() {
+            const res = await fetch('/admin/users', { headers: authHeaders() });
+            const data = await res.json();
+            allUsers = data.users || [];
+            renderUsers();
+        }
+
+        async function toggleRole(id, currentRole) {
+            const newRole = currentRole === 'admin' ? 'user' : 'admin';
+            const res = await fetch(`/admin/users/${id}/role`, {
+                method: 'PATCH',
+                headers: Object.assign(authHeaders(), { 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ role: newRole }),
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.detail || 'Could not change role'); return; }
+            loadUsers();
+        }
+
+        async function toggleStatus(id, currentlyActive) {
+            const res = await fetch(`/admin/users/${id}/status`, {
+                method: 'PATCH',
+                headers: Object.assign(authHeaders(), { 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ is_active: !currentlyActive }),
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.detail || 'Could not change status'); return; }
+            loadUsers();
+        }
+
+        async function viewUser(id) {
+            const res = await fetch(`/admin/users/${id}`, { headers: authHeaders() });
+            if (!res.ok) return;
+            const u = await res.json();
+            document.getElementById('userModalTitle').textContent = u.email;
+
+            const scansHtml = (u.scans || []).length
+                ? u.scans.map(s => `<div class="flex justify-between border-b pnb-hairline py-1.5">
+                        <span>${s.target_domain}</span>
+                        <span class="pnb-text-muted text-xs">${s.status} · ${fmtDate(s.created_at)}</span>
+                      </div>`).join('')
+                : '<p class="pnb-text-muted text-xs">No scans yet.</p>';
+            document.getElementById('userModalScans').innerHTML = scansHtml;
+
+            const activityHtml = (u.activity || []).length
+                ? u.activity.map(a => `<div class="flex justify-between border-b pnb-hairline py-1.5">
+                        <span>${a.event}</span>
+                        <span class="pnb-text-muted text-xs">${fmtDate(a.created_at)}${a.ip_address ? ' · ' + a.ip_address : ''}</span>
+                      </div>`).join('')
+                : '<p class="pnb-text-muted text-xs">No recorded activity.</p>';
+            document.getElementById('userModalActivity').innerHTML = activityHtml;
+
+            document.getElementById('userModal').classList.remove('hidden');
+        }
+
+        function closeUserModal() {
+            document.getElementById('userModal').classList.add('hidden');
+        }
+        document.getElementById('userModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('userModal')) closeUserModal();
+        });
+
+        async function loadActivity() {
+            const res = await fetch('/admin/activity?limit=40', { headers: authHeaders() });
+            if (!res.ok) return;
+            const data = await res.json();
+            const html = (data.events || []).map(e => {
+                const label = e.kind === 'login'
+                    ? `${e.email || 'unknown'} — ${e.event}`
+                    : `${e.email || 'anonymous'} scanned ${e.domain || ''} (${e.event})`;
+                return `<div class="text-xs border-b pnb-hairline pb-2">
+                    <p class="pnb-text">${label}</p>
+                    <p class="pnb-text-muted mt-0.5">${fmtDate(e.created_at)}</p>
+                </div>`;
+            }).join('');
+            document.getElementById('activityFeed').innerHTML = html || '<p class="text-sm pnb-text-muted">No activity recorded yet.</p>';
+        }
+
+        async function init() {
+            if (!token) {
+                document.getElementById('deniedGate').classList.remove('hidden');
+                document.getElementById('deniedMsg').textContent = 'You need to be logged in as an admin to view this page.';
+                return;
+            }
+            const meRes = await fetch('/auth/me', { headers: authHeaders() });
+            if (!meRes.ok) {
+                document.getElementById('deniedGate').classList.remove('hidden');
+                return;
+            }
+            const me = await meRes.json();
+            if (me.role !== 'admin') {
+                document.getElementById('deniedGate').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('adminContent').classList.remove('hidden');
+            loadStats();
+            loadUsers();
+            loadActivity();
+        }
+
+        init();
+    </script>
+
+    <!-- Qubitsense AI Agent Widget -->
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+    <script src="/components/ai-agent.js?v=10"></script>
+</body>
+
+</html>

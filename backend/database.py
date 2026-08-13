@@ -9,13 +9,20 @@ import os
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 DB_PATH = os.path.join(DB_DIR, "platform.db")
 
+os.makedirs(DB_DIR, exist_ok=True)
+
 
 def get_connection() -> sqlite3.Connection:
-    """Return a connection to the SQLite database."""
-    os.makedirs(DB_DIR, exist_ok=True)
+    """Return a connection to the SQLite database.
+
+    journal_mode is a persistent property of the DB file, not the connection,
+    so it's set once in init_db() rather than on every connect (that PRAGMA
+    round-trip was measured at a meaningful fraction of per-row write cost
+    under high row counts).
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 
@@ -23,6 +30,7 @@ def init_db() -> None:
     """Create database tables if they do not exist."""
     conn = get_connection()
     try:
+        conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scans (
@@ -217,6 +225,32 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS login_audit (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id         INTEGER,
+                email           TEXT    NOT NULL,
+                event           TEXT    NOT NULL,
+                ip_address      TEXT,
+                user_agent      TEXT,
+                created_at      TEXT    NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mfa_challenges (
+                token           TEXT    PRIMARY KEY,
+                user_id         INTEGER NOT NULL,
+                expires_at      TEXT    NOT NULL,
+                attempt_count   INTEGER NOT NULL DEFAULT 0,
+                created_at      TEXT    NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS schedule_run_history (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 schedule_id     INTEGER NOT NULL,      
@@ -255,5 +289,87 @@ def init_db() -> None:
             conn.commit()
         except Exception:
             pass  # Column already exists
+
+        # Migrate: certificate validation fields — computed in
+        # certificate_parser.py since the async TLS rewrite, but previously
+        # discarded before reaching the DB. Real findings (expired,
+        # self-signed, hostname-mismatched certs) with nowhere to land.
+        for stmt in (
+            "ALTER TABLE tls_results ADD COLUMN hostname_mismatch INTEGER;",
+            "ALTER TABLE tls_results ADD COLUMN is_self_signed INTEGER;",
+            "ALTER TABLE tls_results ADD COLUMN is_expired INTEGER;",
+            "ALTER TABLE tls_results ADD COLUMN days_until_expiry INTEGER;",
+            "ALTER TABLE tls_results ADD COLUMN issuer TEXT;",
+        ):
+            try:
+                conn.execute(stmt)
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+        # Migrate: roles, account status, MFA and Supabase identity mirror
+        # on users. Additive only — supabase_uid stays NULL for local-only
+        # accounts, so nothing here requires a Supabase project to exist.
+        for stmt in (
+            "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';",
+            "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE users ADD COLUMN last_login_at TEXT;",
+            "ALTER TABLE users ADD COLUMN supabase_uid TEXT;",
+            "ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN mfa_secret TEXT;",
+            "ALTER TABLE users ADD COLUMN mfa_pending_secret TEXT;",
+        ):
+            try:
+                conn.execute(stmt)
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+        # Migrate: reclassify scans that finished cleanly but scanned zero
+        # hosts. The worker used to mark any non-crashing run 'completed',
+        # so a typo'd or parked domain produced a scan that looked
+        # successful, rendered a dashboard of zeroes, and would export an
+        # empty report. Those are failures, not successes.
+        #
+        # Deliberately narrow: only status='completed' rows with no
+        # tls_results at all. A 'running' scan legitimately has zero rows
+        # mid-flight and must not be touched.
+        reclassified = conn.execute(
+            """
+            UPDATE scans SET status = 'failed'
+            WHERE status = 'completed'
+              AND NOT EXISTS (SELECT 1 FROM tls_results WHERE tls_results.scan_id = scans.id);
+            """
+        ).rowcount
+        if reclassified:
+            # A cache entry pointing at an empty scan would serve that
+            # emptiness to the next re-scan of the same domain, so those
+            # entries go too.
+            conn.execute(
+                """
+                DELETE FROM scan_cache WHERE scan_id IN (
+                    SELECT id FROM scans WHERE status = 'failed'
+                );
+                """
+            )
+            print(f"[db] Reclassified {reclassified} zero-host scan(s) from completed -> failed")
+        conn.commit()
+
+        # Indexes: every scan_id lookup was a full table scan without these.
+        # idx_scans_queue serves the worker's job poll, which runs every 3s
+        # forever; idx_logs_scan_id serves the progress page's 2s poll.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tls_scan      ON tls_results(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_scan   ON discovered_assets(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_hndl_scan     ON hndl_results(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_algo_scan     ON algorithm_analysis(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_failures_scan ON scan_failures(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_results_scan  ON scan_results(scan_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_logs_scan_id  ON scan_logs(scan_id, id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_queue   ON scans(status, priority DESC, created_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_domain  ON scan_cache(domain, expires_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_scans_u  ON user_scans(user_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_login_audit_user ON login_audit(user_id, created_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id);")
+        conn.commit()
     finally:
         conn.close()

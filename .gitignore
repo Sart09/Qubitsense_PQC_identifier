@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 .env
 
 # Database
@@ -24,3 +25,6 @@ node_modules/
 
 # Gemini
 .gemini/
+
+# AI coding tool config — not part of the application
+.claude/

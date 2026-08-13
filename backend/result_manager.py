@@ -50,6 +50,11 @@ def store_tls_result(
     key_size: int | None,
     signature_algorithm: str | None,
     certificate_expiry: str | None,
+    hostname_mismatch: bool | None = None,
+    is_self_signed: bool | None = None,
+    is_expired: bool | None = None,
+    days_until_expiry: int | None = None,
+    issuer: str | None = None,
 ) -> int:
     """Insert a TLS scan result row."""
     conn = get_connection()
@@ -58,13 +63,16 @@ def store_tls_result(
             """
             INSERT INTO tls_results (
                 scan_id, hostname, port, tls_version, cipher_suite,
-                key_algorithm, key_size, signature_algorithm, certificate_expiry, created_at
+                key_algorithm, key_size, signature_algorithm, certificate_expiry,
+                hostname_mismatch, is_self_signed, is_expired, days_until_expiry, issuer,
+                created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 scan_id, hostname, port, tls_version, cipher_suite,
                 key_algorithm, key_size, signature_algorithm, certificate_expiry,
+                hostname_mismatch, is_self_signed, is_expired, days_until_expiry, issuer,
                 datetime.now(timezone.utc).isoformat()
             ),
         )

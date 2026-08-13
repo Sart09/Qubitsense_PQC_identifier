@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Security Settings — Quantum Proof System Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
+    <meta name="description" content="Manage two-factor authentication for your account." />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/components/pnb-theme.css">
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .mfa-code-input {
+            letter-spacing: .5em;
+            text-align: center;
+            font-size: 22px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="max-w-3xl mx-auto px-6 py-10">
+        <h1 class="text-2xl font-extrabold pnb-shell-h1 mb-1">Security Settings</h1>
+        <p class="text-sm pnb-shell-text-muted mb-8">Manage two-factor authentication for your account.</p>
+
+        <div id="authGate" class="hidden pnb-card rounded-2xl p-8 text-center">
+            <p class="pnb-text mb-4">You need to be logged in to manage security settings.</p>
+            <a href="/login" class="pnb-btn pnb-btn-primary inline-flex px-5 py-2.5">Log In</a>
+        </div>
+
+        <div id="mfaSection" class="hidden space-y-6">
+            <!-- Status card -->
+            <section class="pnb-card rounded-2xl p-6">
+                <div class="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                        <h2 class="pnb-h2 text-base">Two-Factor Authentication (TOTP)</h2>
+                        <p class="text-xs pnb-text-muted mt-1">Adds a 6-digit authenticator-app code to your login, on top of your password.</p>
+                    </div>
+                    <span id="mfaStatusBadge" class="pnb-badge">
+                        <span id="mfaStatusDot" class="pnb-dot pnb-dot-critical"></span>
+                        <span id="mfaStatusText" class="pnb-text">Checking…</span>
+                    </span>
+                </div>
+            </section>
+
+            <!-- Enable flow -->
+            <section id="enableCard" class="hidden pnb-card rounded-2xl p-6">
+                <h3 class="pnb-h3 mb-3">Set Up Two-Factor Authentication</h3>
+
+                <div id="enrollStep">
+                    <p class="text-sm pnb-text-2 mb-4">
+                        You'll need an authenticator app (Google Authenticator, Authy, 1Password, etc.) on your phone.
+                    </p>
+                    <button id="startEnrollBtn" onclick="startEnroll()" class="pnb-btn pnb-btn-primary px-5 py-2.5 text-sm">
+                        Start Setup
+                    </button>
+                    <div id="enrollMsg" class="text-sm mt-3 hidden"></div>
+                </div>
+
+                <div id="scanStep" class="hidden">
+                    <ol class="text-sm pnb-text-2 space-y-4 list-decimal list-inside">
+                        <li>
+                            Scan this QR code with your authenticator app:
+                            <div class="mt-3 mb-1 flex justify-center">
+                                <img id="mfaQrImg" alt="MFA enrollment QR code" class="rounded-lg border pnb-hairline" style="width:200px;height:200px;" />
+                            </div>
+                            <p class="text-[11px] pnb-text-muted text-center">Can't scan? Enter this key manually: <code id="mfaSecretText" class="font-mono"></code></p>
+                        </li>
+                        <li>
+                            Enter the 6-digit code the app shows:
+                            <form onsubmit="activateMfa(event)" class="mt-3 flex gap-3 items-start flex-wrap">
+                                <input id="activateCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                                    required placeholder="000000" class="pnb-input mfa-code-input" style="max-width:160px;" />
+                                <button type="submit" class="pnb-btn pnb-btn-primary px-5 py-2.5 text-sm">Activate</button>
+                            </form>
+                            <div id="activateMsg" class="text-sm mt-3 hidden"></div>
+                        </li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- Disable flow -->
+            <section id="disableCard" class="hidden pnb-card rounded-2xl p-6">
+                <h3 class="pnb-h3 mb-3">Disable Two-Factor Authentication</h3>
+                <p class="text-sm pnb-text-2 mb-4">Enter your password to confirm. This removes the extra login step.</p>
+                <form onsubmit="disableMfa(event)" class="flex gap-3 items-start flex-wrap">
+                    <input id="disablePassword" type="password" required placeholder="Current password" class="pnb-input" style="max-width:260px;" />
+                    <button type="submit" class="pnb-btn pnb-btn-danger px-5 py-2.5 text-sm">Disable 2FA</button>
+                </form>
+                <div id="disableMsg" class="text-sm mt-3 hidden"></div>
+            </section>
+        </div>
+    </div>
+
+    <script src="/components/sidebar.js"></script>
+    <script>
+        const token = localStorage.getItem('token');
+
+        function authHeaders(extra) {
+            return Object.assign({ 'Authorization': 'Bearer ' + token }, extra || {});
+        }
+
+        function showMsg(id, msg, isError) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            el.style.color = isError ? 'var(--pnb-risk-critical)' : 'var(--pnb-risk-safe)';
+        }
+
+        function setStatus(enabled) {
+            const dot = document.getElementById('mfaStatusDot');
+            const text = document.getElementById('mfaStatusText');
+            dot.className = 'pnb-dot ' + (enabled ? 'pnb-dot-safe' : 'pnb-dot-critical');
+            text.textContent = enabled ? 'Enabled' : 'Not enabled';
+            document.getElementById('enableCard').classList.toggle('hidden', enabled);
+            document.getElementById('disableCard').classList.toggle('hidden', !enabled);
+            // Reset the enroll flow back to step 1 whenever status is (re)loaded.
+            document.getElementById('enrollStep').classList.remove('hidden');
+            document.getElementById('scanStep').classList.add('hidden');
+        }
+
+        async function loadStatus() {
+            const res = await fetch('/auth/me', { headers: authHeaders() });
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('token');
+                window.location.href = '/login?reason=session_expired';
+                return;
+            }
+            const data = await res.json();
+            setStatus(!!data.mfa_enabled);
+        }
+
+        async function startEnroll() {
+            document.getElementById('enrollMsg').classList.add('hidden');
+            try {
+                const res = await fetch('/auth/mfa/enroll', { method: 'POST', headers: authHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Could not start enrollment');
+                document.getElementById('mfaQrImg').src = 'data:image/png;base64,' + data.qr_png_base64;
+                document.getElementById('mfaSecretText').textContent = data.secret;
+                document.getElementById('enrollStep').classList.add('hidden');
+                document.getElementById('scanStep').classList.remove('hidden');
+            } catch (err) {
+                showMsg('enrollMsg', err.message, true);
+            }
+        }
+
+        async function activateMfa(e) {
+            e.preventDefault();
+            const code = document.getElementById('activateCode').value.trim();
+            try {
+                const res = await fetch('/auth/mfa/activate', {
+                    method: 'POST',
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ code }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Activation failed');
+                showMsg('activateMsg', 'Two-factor authentication is now enabled.', false);
+                localStorage.setItem('mfa_enabled', '1');
+                setTimeout(loadStatus, 900);
+            } catch (err) {
+                showMsg('activateMsg', err.message, true);
+            }
+        }
+
+        async function disableMfa(e) {
+            e.preventDefault();
+            const password = document.getElementById('disablePassword').value;
+            try {
+                const res = await fetch('/auth/mfa/disable', {
+                    method: 'POST',
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ password }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Could not disable 2FA');
+                showMsg('disableMsg', 'Two-factor authentication has been disabled.', false);
+                localStorage.setItem('mfa_enabled', '0');
+                document.getElementById('disablePassword').value = '';
+                setTimeout(loadStatus, 900);
+            } catch (err) {
+                showMsg('disableMsg', err.message, true);
+            }
+        }
+
+        if (!token) {
+            document.getElementById('authGate').classList.remove('hidden');
+        } else {
+            document.getElementById('mfaSection').classList.remove('hidden');
+            loadStatus();
+        }
+    </script>
+
+    <!-- Qubitsense AI Agent Widget -->
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+    <script src="/components/ai-agent.js?v=10"></script>
+</body>
+
+</html>

@@ -4,49 +4,16 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Scans - Quantum Proof System Scanner</title>
+    <title>Home — Scanned Domains | Quantum Proof System Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
     <meta name="description" content="View your scan history and monitor domains." />
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-                    colors: {
-                        white: '#1e293b', /* Invert all hardcoded white text to dark charcoal */
-                        slate: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
-                        gray: { 50: '#0f172a', 100: '#1e293b', 300: '#334155', 400: '#475569', 500: '#64748b', 600: '#94a3b8', 700: '#cbd5e1', 800: '#f1f5f9', 900: '#ffffff', 950: '#f8fafc' },
-                        indigo: { 300: '#be123c', 400: '#e11d48', 500: '#a80024', 600: '#88001b' },
-                        amber: { 400: '#f59e0b', 500: '#d97706' },
-                        purple: { 600: '#88001b' } // Replace legacy background gradients with maroon
-                    }
-                }
-            }
-        };
-    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         rel="stylesheet" />
     <link rel="stylesheet" href="/components/pnb-theme.css">
     <style>
         * {
             font-family: 'Inter', sans-serif;
-        }
-
-        body {
-            background-color: #f1f5f9;
-            background-image: url('/components/pnb_bg.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            color: #334155;
-            min-height: 100vh;
-        }
-
-        .glass-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
         .risk-bar {
@@ -141,99 +108,67 @@
     </style>
 </head>
 
-<body class="text-white">
-
-    <!-- PNB Corporate Navigation -->
-    <header class="relative z-20 border-b border-gray-700/50 bg-[#a80024] shadow-md" style="color: #ffffff;">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3 w-1/3">
-                <span class="text-2xl drop-shadow-md">🏦</span>
-                <h1 class="font-extrabold text-lg tracking-tight whitespace-nowrap hidden md:block">Punjab National Bank
-                    <span class="text-amber-400 font-medium px-2">—</span> Enterprise PQC Dashboard
-                </h1>
-                <h1 class="font-extrabold text-lg tracking-tight md:hidden">PNB Dashboard</h1>
-            </div>
-
-            <div class="flex justify-center gap-4 w-1/3">
-                <a href="/schedules"
-                    class="text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md shadow-sm whitespace-nowrap">🕒
-                    Schedules</a>
-                <a href="/scanner"
-                    class="text-xs font-bold text-amber-400 hover:text-white transition px-4 py-2 border border-amber-400/30 hover:bg-amber-400/10 rounded-md shadow-sm whitespace-nowrap">🏠
-                    Back to Home</a>
-            </div>
-
-            <div class="flex items-center justify-end gap-4 w-1/3">
-                <span id="userEmail" class="text-xs text-amber-100/70 hidden sm:block tracking-wide"></span>
-                <button onclick="logout()"
-                    class="px-4 py-1.5 rounded-lg bg-[#88001b] border border-red-900/50 text-red-100 text-sm hover:bg-red-900 transition shadow-inner">Logout</button>
-            </div>
-        </div>
-    </header>
+<body>
 
     <main class="max-w-6xl mx-auto px-6 py-8">
         <!-- Header -->
         <div class="flex items-center justify-between mb-8 mt-4">
             <div>
-                <h1 class="text-3xl font-bold" style="color: #1e293b;">Scanned Domains Inventory</h1>
-                <p class="text-sm text-gray-500 mt-1 font-medium tracking-wide">Click a domain to view all historical
+                <h1 class="text-3xl font-bold pnb-shell-h1">Scanned Domains Inventory</h1>
+                <p class="text-sm pnb-shell-text-muted mt-1 font-medium tracking-wide">Click a domain to view all historical
                     scans and select one to analyze</p>
             </div>
             <div class="flex items-center gap-4">
-                <span id="domainCount" class="text-sm text-gray-500"></span>
-                <a href="/scanner"
-                    class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition shadow-lg shadow-indigo-500/20">
+                <span id="domainCount" class="text-sm pnb-shell-text-muted"></span>
+                <a href="/" class="pnb-btn pnb-btn-primary text-sm">
                     + New Scan
                 </a>
             </div>
         </div>
 
         <!-- Domain Inventory Grid -->
-        <div class="glass-card rounded-2xl overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-                <h2 class="font-semibold text-white">Domain Inventory</h2>
+        <div class="pnb-card rounded-2xl overflow-hidden">
+            <div class="pnb-card-header px-6 py-4 flex items-center justify-between">
+                <h2 class="pnb-h2">Domain Inventory</h2>
                 <input type="text" id="domainSearch" placeholder="Search domains..."
-                    class="bg-gray-100 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 w-48 focus:outline-none focus:border-indigo-500">
+                    class="pnb-input w-48">
             </div>
             <div id="domainList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-                <div class="col-span-full text-center text-gray-500 py-12">Loading domains...</div>
+                <div class="col-span-full text-center pnb-text-muted py-12">Loading domains...</div>
             </div>
         </div>
 
         <!-- Empty State -->
         <div id="emptyState" class="hidden text-center py-16">
             <div class="text-5xl mb-4 opacity-30">&#128270;</div>
-            <h3 class="text-lg font-semibold text-gray-300 mb-2">No scanned domains yet</h3>
-            <p class="text-sm text-gray-500 mb-4">Start by scanning your first domain.</p>
-            <a href="/scanner"
-                class="inline-block px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-semibold hover:shadow-lg hover:shadow-indigo-500/25 transition">Scan
+            <h3 class="text-lg font-semibold pnb-shell-h2 mb-2">No scanned domains yet</h3>
+            <p class="text-sm pnb-shell-text-muted mb-4">Start by scanning your first domain.</p>
+            <a href="/" class="pnb-btn pnb-btn-primary inline-block text-sm">Scan
                 a Domain</a>
         </div>
 
         <!-- Scan History Modal -->
-        <div id="scanHistoryModal"
-            class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-filter backdrop-blur-sm">
-            <div class="bg-gray-50 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
+        <div id="scanHistoryModal" class="hidden pnb-modal-backdrop">
+            <div class="pnb-modal-panel rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
                 <!-- Modal Header -->
-                <div class="sticky top-0 px-8 py-6 border-b border-gray-200 bg-white">
+                <div class="pnb-modal-header sticky top-0 px-8 py-6">
                     <div class="flex items-center justify-between mb-4">
                         <div>
-                            <h2 class="text-2xl font-bold" style="color: #1e293b;"><span id="modalDomainName"></span> -
+                            <h2 class="pnb-h2 text-2xl"><span id="modalDomainName"></span> -
                                 Scan History</h2>
-                            <p class="text-sm text-gray-500 mt-1">Click a scan to view detailed analysis</p>
+                            <p class="text-sm pnb-text-muted mt-1">Click a scan to view detailed analysis</p>
                         </div>
-                        <button onclick="closeScanHistoryModal()"
-                            class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+                        <button onclick="closeScanHistoryModal()" class="pnb-modal-close">×</button>
                     </div>
 
                     <!-- Date Filter -->
                     <div class="flex gap-3 items-center">
-                        <span class="text-sm text-gray-600 font-medium">Filter by date:</span>
+                        <span class="text-sm pnb-text-2 font-medium">Filter by date:</span>
                         <input type="date" id="scanDateFilter"
-                            class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-indigo-500"
+                            class="pnb-input w-40"
                             onchange="filterScansByDate()">
                         <button onclick="clearDateFilter()"
-                            class="text-xs px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition">
+                            class="pnb-btn pnb-btn-secondary text-xs">
                             Clear Filter
                         </button>
                     </div>
@@ -241,13 +176,13 @@
 
                 <!-- Modal Body -->
                 <div id="scanHistoryContent" class="overflow-y-auto" style="max-height: calc(80vh - 180px);">
-                    <div class="px-8 py-12 text-center text-gray-500">Loading scans...</div>
+                    <div class="px-8 py-12 text-center pnb-text-muted">Loading scans...</div>
                 </div>
 
                 <!-- Modal Footer -->
-                <div class="sticky bottom-0 px-8 py-4 border-t border-gray-200 bg-white flex justify-end gap-3">
+                <div class="pnb-divider sticky bottom-0 px-8 py-4 flex justify-end gap-3">
                     <button onclick="closeScanHistoryModal()"
-                        class="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 transition">
+                        class="pnb-btn pnb-btn-secondary">
                         Close
                     </button>
                 </div>
@@ -256,24 +191,24 @@
     </main>
 
     <!-- Note Modal Overlay -->
-    <div id="noteModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center z-50"
+    <div id="noteModal" class="hidden pnb-modal-backdrop"
         onclick="closeNoteModal()">
-        <div class="glass-card w-full max-w-md rounded-2xl p-6 relative" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold text-white mb-4">Scan Note</h3>
+        <div class="pnb-modal-panel w-full max-w-md rounded-2xl p-6 relative" onclick="event.stopPropagation()">
+            <h3 class="text-lg font-semibold pnb-h2 mb-4">Scan Note</h3>
             <input type="hidden" id="noteScanId">
             <textarea id="noteContent" rows="5"
-                class="w-full bg-gray-800/80 border border-gray-700 rounded-xl p-4 text-sm text-gray-300 focus:outline-none focus:border-indigo-500 resize-none mb-6 shadow-inner pointer-events-auto"
+                class="pnb-textarea rounded-xl p-4 text-sm resize-none mb-6 shadow-inner pointer-events-auto"
                 placeholder="Write your findings here..."></textarea>
 
             <div class="flex items-center justify-between mt-2">
                 <button onclick="clearAndSaveNote()"
-                    class="text-sm text-red-500 hover:text-red-400 font-medium px-2 py-1 transition cursor-pointer">Delete
+                    class="pnb-btn pnb-btn-danger text-sm px-2 py-1">Delete
                     Note</button>
                 <div class="flex gap-3">
                     <button onclick="closeNoteModal()"
-                        class="px-5 py-2 rounded-lg bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 text-sm font-medium transition cursor-pointer">Back</button>
+                        class="pnb-btn pnb-btn-secondary text-sm">Back</button>
                     <button onclick="saveNoteFromModal()"
-                        class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition cursor-pointer">Save</button>
+                        class="pnb-btn pnb-btn-primary text-sm">Save</button>
                 </div>
             </div>
         </div>
@@ -281,19 +216,26 @@
 
     <script>
         const token = localStorage.getItem('token');
-        const email = localStorage.getItem('email');
 
         if (!token) {
             window.location.href = '/login';
         }
-
-        document.getElementById('userEmail').textContent = email || '';
 
         function logout() {
             localStorage.removeItem('token');
             localStorage.removeItem('email');
             localStorage.removeItem('user_id');
             window.location.href = '/login';
+        }
+
+        // If the token is missing/expired, send the user back to login with
+        // a reason instead of leaving them on a page that silently shows
+        // nothing (or, previously, silently showed every user's scans).
+        function handleAuthFailure() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('email');
+            localStorage.removeItem('user_id');
+            window.location.href = '/login?reason=session_expired';
         }
 
         function riskClass(score) {
@@ -312,118 +254,108 @@
 
         async function toggleMonitor(domain, current) {
             try {
-                await fetch(`/monitor/domain?domain=${encodeURIComponent(domain)}&monitored=${!current}`, {
+                const res = await fetch(`/monitor/domain?domain=${encodeURIComponent(domain)}&monitored=${!current}`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
-                loadScans();
+                if (res.status === 401) return handleAuthFailure();
+                if (!res.ok) throw new Error(`API error ${res.status}`);
+                await loadDomains();
             } catch (err) {
                 console.error('Monitor toggle failed:', err);
+                alert('Could not update monitoring for this domain: ' + err.message);
             }
         }
 
-        function renderScans(scans) {
+        // All of the current user's own scans, flat — fetched once from the
+        // authenticated /user/scans endpoint and grouped/filtered client-side
+        // from here on. Previously this page called the global, unauthenticated
+        // /domains and /domain/{domain}/scans endpoints, which return every
+        // domain scanned by every user, not just the logged-in user's own —
+        // a "My Scans" page that actually showed everyone's scans.
+        window.allUserScans = [];
+
+        function groupByDomain(scans) {
+            const groups = {};
+            scans.forEach(s => {
+                (groups[s.domain] = groups[s.domain] || []).push(s);
+            });
+            return groups;
+        }
+
+        function renderScans(groups) {
             const list = document.getElementById('domainList');
             const empty = document.getElementById('emptyState');
+            const domains = Object.keys(groups);
 
-            if (scans.length === 0) {
+            if (domains.length === 0) {
                 list.parentElement.classList.add('hidden');
                 empty.classList.remove('hidden');
                 document.getElementById('domainCount').textContent = '';
                 return;
             }
 
-            list.innerHTML = scans.map((domain, i) => `
-                <div class="glass-card rounded-xl p-5 cursor-pointer hover:shadow-lg transition fade-in" 
-                     style="animation-delay:${i * 50}ms" 
-                     onclick="showScanHistory('${domain}')">
+            list.innerHTML = domains.map((domain, i) => {
+                const scans = groups[domain]; // already newest-first from the API
+                const latest = scans[0];
+                const statusLabel = latest.status.charAt(0).toUpperCase() + latest.status.slice(1);
+                const hasScore = latest.status === 'completed';
+                return `
+                <div class="pnb-card rounded-xl p-5 cursor-pointer hover:shadow-lg transition fade-in focus:outline-none focus:ring-2 focus:ring-[var(--pnb-gold)]"
+                     style="animation-delay:${i * 50}ms"
+                     role="button" tabindex="0"
+                     onclick="showScanHistory('${domain}')"
+                     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showScanHistory('${domain}');}">
                     <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-lg font-bold truncate" style="color: #4E0B11;">${domain}</h3>
-                        <span class="text-2xl">📊</span>
+                        <h3 class="text-lg font-bold truncate" style="color:var(--pnb-maroon-dark)">${domain}</h3>
+                        <span class="text-2xl">${latest.monitored ? '👁️' : '📊'}</span>
                     </div>
-                    <p class="text-xs text-gray-500 mb-4">Click to view scan history</p>
+                    <p class="text-xs pnb-text-muted mb-4">Click to view scan history</p>
                     <div class="space-y-2">
                         <div class="flex items-center justify-between text-xs">
-                            <span class="text-gray-600">Historical Scans: </span>
-                            <span id="scan-count-${domain.replace(/\./g, '_')}" class="font-semibold text-indigo-600">--</span>
+                            <span class="pnb-text-muted">Your Scans: </span>
+                            <span class="font-semibold" style="color:var(--pnb-maroon)">${scans.length}</span>
                         </div>
                         <div class="flex items-center justify-between text-xs">
-                            <span class="text-gray-600">Last Status: </span>
-                            <span id="last-status-${domain.replace(/\./g, '_')}" class="font-semibold text-amber-600">Loading...</span>
+                            <span class="pnb-text-muted">Last Status: </span>
+                            <span class="font-semibold pnb-text-2">${statusLabel}</span>
                         </div>
+                        ${hasScore ? `
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="pnb-text-muted">Last Risk Score: </span>
+                            <span class="font-semibold" style="color:${riskColor(latest.risk_score)}">${latest.risk_score}/100</span>
+                        </div>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             empty.classList.add('hidden');
             list.parentElement.classList.remove('hidden');
-            document.getElementById('domainCount').textContent = `${scans.length} domain${scans.length !== 1 ? 's' : ''}`;
-
-            // Load scan counts for each domain
-            scans.forEach(domain => loadDomainScanStats(domain));
+            document.getElementById('domainCount').textContent = `${domains.length} domain${domains.length !== 1 ? 's' : ''}`;
         }
 
-        async function loadDomainScanStats(domain) {
-            try {
-                const res = await fetch(`/domain/${encodeURIComponent(domain)}/scans`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const safeDomain = domain.replace(/\./g, '_');
-                    document.getElementById(`scan-count-${safeDomain}`).textContent = data.total_scans;
-
-                    // Get last scan status
-                    if (data.scans && data.scans.length > 0) {
-                        const lastScan = data.scans[0];
-                        document.getElementById(`last-status-${safeDomain}`).textContent = lastScan.status.charAt(0).toUpperCase() + lastScan.status.slice(1);
-                    }
-                }
-            } catch (err) {
-                console.error(`Failed to load stats for ${domain}:`, err);
-            }
-        }
-
-        async function showScanHistory(domain) {
-            console.log(`[ScanHistory] Opening history for domain: ${domain}`);
+        function showScanHistory(domain) {
             document.getElementById('modalDomainName').textContent = domain;
             document.getElementById('scanHistoryModal').classList.remove('hidden');
             document.getElementById('scanDateFilter').value = '';
 
-            try {
-                const res = await fetch(`/domain/${encodeURIComponent(domain)}/scans`);
-                if (!res.ok) {
-                    throw new Error(`API Error: ${res.status}`);
-                }
+            const scans = window.allUserScans.filter(s => s.domain === domain);
+            window.allScans = scans;
 
-                const data = await res.json();
-                const scans = data.scans || [];
-
-                // Store all scans for filtering
-                window.allScans = scans;
-
-                if (scans.length === 0) {
-                    document.getElementById('scanHistoryContent').innerHTML = `
-                        <div class="text-center py-12 text-gray-500">
-                            <p>No scans found for this domain</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                renderScanHistoryList(scans);
-            } catch (err) {
-                console.error('[ScanHistory] Error loading history:', err);
+            if (scans.length === 0) {
                 document.getElementById('scanHistoryContent').innerHTML = `
-                    <div class="text-center py-12 text-red-600">
-                        <p>Error loading scan history: ${err.message}</p>
-                    </div>
+                    <div class="text-center py-12 pnb-text-muted"><p>No scans found for this domain</p></div>
                 `;
+                return;
             }
+            renderScanHistoryList(scans);
         }
 
         function renderScanHistoryList(scans) {
             if (scans.length === 0) {
                 document.getElementById('scanHistoryContent').innerHTML = `
-                    <div class="text-center py-12 text-gray-500">
+                    <div class="text-center py-12 pnb-text-muted">
                         <p>No scans match the selected date filter</p>
                     </div>
                 `;
@@ -432,45 +364,105 @@
 
             const domain = document.getElementById('modalDomainName').textContent;
             document.getElementById('scanHistoryContent').innerHTML = `
-                <div class="divide-y divide-gray-200">
+                <div class="divide-y divide-[var(--pnb-border)]">
                     ${scans.map((scan, i) => {
                 const scanDate = new Date(scan.created_at);
                 const dateStr = scanDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
                 const timeStr = scanDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+                const hasScore = scan.status === 'completed';
+                const noteEscaped = (scan.note || '').replace(/'/g, "\\'").replace(/\n/g, '\\n');
 
                 return `
-                            <div class="px-8 py-4 hover:bg-gray-100 transition cursor-pointer" 
+                            <div class="px-8 py-4 scan-row transition cursor-pointer"
                                  onclick="window.location.href='/dashboard/${scan.scan_id}'">
                                 <div class="flex items-center justify-between mb-2">
                                     <div class="flex-1">
-                                        <p class="font-semibold text-gray-800">
-                                            <span class="text-indigo-600">${domain}</span>
-                                            <span class="text-gray-400 font-normal mx-2">•</span>
-                                            <span class="text-gray-700">${dateStr}</span>
-                                            <span class="text-gray-400 font-normal mx-2">@</span>
-                                            <span class="text-gray-700 font-mono">${timeStr}</span>
+                                        <p class="font-semibold pnb-text">
+                                            <span style="color:var(--pnb-maroon)">${domain}</span>
+                                            <span class="pnb-text-muted font-normal mx-2">•</span>
+                                            <span class="pnb-text-2">${dateStr}</span>
+                                            <span class="pnb-text-muted font-normal mx-2">@</span>
+                                            <span class="pnb-text-2 font-mono">${timeStr}</span>
                                         </p>
-                                        <p class="text-xs text-gray-500 mt-1">Scan ID: #${scan.scan_id}</p>
+                                        <p class="text-xs pnb-text-muted mt-1">Scan ID: #${scan.scan_id}</p>
                                     </div>
-                                    <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-2">
                                         <span class="badge badge-${scan.status}" style="padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;">${scan.status.toUpperCase()}</span>
                                         ${(scan.status === 'running' || scan.status === 'queued' || scan.status === 'paused') ? `
                                             <button onclick="event.stopPropagation(); stopScan(${scan.scan_id}, '${domain}')"
-                                                class="px-3 py-1 rounded-md text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition shadow-sm">
+                                                class="pnb-btn pnb-btn-danger px-3 py-1 text-xs shadow-sm">
                                                 ■ Stop
                                             </button>
                                         ` : ''}
+                                        <button onclick="event.stopPropagation(); toggleMonitor('${domain}', ${scan.monitored})"
+                                            title="${scan.monitored ? 'Stop monitoring this domain' : 'Monitor this domain'}"
+                                            class="px-2 py-1 rounded-md text-xs font-bold transition"
+                                            style="${scan.monitored ? 'background:var(--pnb-gold-light);color:var(--pnb-maroon-dark);' : 'background:var(--pnb-surface-alt);color:var(--pnb-ink-2);border:1px solid var(--pnb-border-strong);'}">
+                                            ${scan.monitored ? '👁️ Monitoring' : '👁️ Monitor'}
+                                        </button>
+                                        <button onclick="event.stopPropagation(); openNoteModal(${scan.scan_id}, '${noteEscaped}')"
+                                            title="${scan.note ? 'Edit note' : 'Add note'}"
+                                            class="px-2 py-1 rounded-md text-xs font-bold transition"
+                                            style="${scan.note ? 'background:var(--pnb-gold-light);color:var(--pnb-maroon-dark);' : 'background:var(--pnb-surface-alt);color:var(--pnb-ink-2);border:1px solid var(--pnb-border-strong);'}">
+                                            📝 ${scan.note ? 'Note' : 'Add Note'}
+                                        </button>
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-6 mt-3 text-sm text-gray-600">
-                                    <span>📊 <strong>${scan.tls_count}</strong> TLS Results</span>
-                                    ${scan.failure_count > 0 ? `<span>⚠️ <strong>${scan.failure_count}</strong> Failures</span>` : '<span>✓ No Failures</span>'}
-                                </div>
+                                ${hasScore ? `
+                                <div class="mt-3 flex items-center gap-3">
+                                    <div class="risk-bar flex-1 max-w-[200px] ${riskClass(scan.risk_score)}">
+                                        <div class="risk-fill" style="width:${scan.risk_score}%"></div>
+                                    </div>
+                                    <span class="text-xs font-bold" style="color:${riskColor(scan.risk_score)}">${scan.risk_score}/100</span>
+                                </div>` : ''}
+                                ${scan.note ? `<p class="text-xs pnb-text-muted mt-2 italic">📝 ${scan.note}</p>` : ''}
                             </div>
                         `;
             }).join('')}
                 </div>
             `;
+        }
+
+        /* ── Note modal ─────────────────────────────────────── */
+        function openNoteModal(scanId, existingNote) {
+            document.getElementById('noteScanId').value = scanId;
+            document.getElementById('noteContent').value = existingNote || '';
+            document.getElementById('noteModal').classList.remove('hidden');
+        }
+
+        function closeNoteModal() {
+            document.getElementById('noteModal').classList.add('hidden');
+        }
+
+        async function saveNoteFromModal() {
+            const scanId = document.getElementById('noteScanId').value;
+            const note = document.getElementById('noteContent').value;
+            await submitNote(scanId, note);
+        }
+
+        async function clearAndSaveNote() {
+            const scanId = document.getElementById('noteScanId').value;
+            await submitNote(scanId, '');
+        }
+
+        async function submitNote(scanId, note) {
+            try {
+                const res = await fetch(`/scan/${scanId}/note`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ note }),
+                });
+                if (res.status === 401) return handleAuthFailure();
+                if (!res.ok) throw new Error(`API error ${res.status}`);
+
+                // Reflect the change locally without a full reload
+                const scan = window.allUserScans.find(s => s.scan_id == scanId);
+                if (scan) scan.note = note;
+                closeNoteModal();
+                if (window.allScans) renderScanHistoryList(window.allScans);
+            } catch (err) {
+                alert('Could not save note: ' + err.message);
+            }
         }
 
         async function stopScan(scanId, domain) {
@@ -518,43 +510,55 @@
 
 
         async function loadDomains() {
+            const list = document.getElementById('domainList');
+            list.innerHTML = '<div class="col-span-full text-center pnb-text-muted py-12">Loading your scans…</div>';
+            document.getElementById('emptyState').classList.add('hidden');
+            list.parentElement.classList.remove('hidden');
+
             try {
-                console.log('[Domains] Loading all scanned domains...');
-                const res = await fetch('/domains');
-                if (!res.ok) {
-                    throw new Error(`API Error: ${res.status} `);
-                }
+                const res = await fetch('/user/scans', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (res.status === 401) return handleAuthFailure();
+                if (!res.ok) throw new Error(`API error ${res.status}`);
 
                 const data = await res.json();
-                let domains = data.domains || [];
+                window.allUserScans = data.scans || [];
 
-                // Filter by search
                 const searchTerm = document.getElementById('domainSearch')?.value?.toLowerCase() || '';
-                if (searchTerm) {
-                    domains = domains.filter(d => d.toLowerCase().includes(searchTerm));
-                }
+                const filtered = searchTerm
+                    ? window.allUserScans.filter(s => s.domain.toLowerCase().includes(searchTerm))
+                    : window.allUserScans;
 
-                console.log(`[Domains] Loaded ${domains.length} domains`);
-                renderScans(domains);
+                renderScans(groupByDomain(filtered));
             } catch (err) {
-                console.error('[Domains] Failed to load domains:', err);
-                document.getElementById('domainList').innerHTML = `
-                    < div class="col-span-full text-center text-red-600 py-12" >
-                        Error loading domains: ${err.message}
-                    </div >
+                console.error('[Domains] Failed to load your scans:', err);
+                list.innerHTML = `
+                    <div class="col-span-full text-center pnb-text py-12">
+                        Couldn't load your scans: ${err.message}. <button onclick="loadDomains()" class="underline font-semibold ml-1" style="color:var(--pnb-maroon)">Retry</button>
+                    </div>
                 `;
             }
         }
 
-        // Add search functionality
-        document.getElementById('domainSearch')?.addEventListener('input', loadDomains);
+        // Search filters the already-fetched list client-side — no need to
+        // hit the network on every keystroke.
+        function filterDomainList() {
+            const searchTerm = document.getElementById('domainSearch')?.value?.toLowerCase() || '';
+            const filtered = searchTerm
+                ? window.allUserScans.filter(s => s.domain.toLowerCase().includes(searchTerm))
+                : window.allUserScans;
+            renderScans(groupByDomain(filtered));
+        }
+        document.getElementById('domainSearch')?.addEventListener('input', filterDomainList);
 
         loadDomains();
     </script>
 
     <!-- Qubitsense AI Agent Widget -->
-    <link rel="stylesheet" href="/css/ai-agent.css?v=4">
-    <script src="/components/ai-agent.js?v=4"></script>
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+    <script src="/components/sidebar.js"></script>
+    <script src="/components/ai-agent.js?v=10"></script>
 
 </body>
 

@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scan History &amp; Analytics — Quantum Proof System Scanner</title>
+    <link rel="icon"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A6%3C/text%3E%3C/svg%3E">
+    <meta name="description" content="Cross-scan post-quantum posture analytics: domain tiers, riskiest hosts, trends, and crypto rollup." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* ── Visualization tokens ──────────────────────────────────────────
+           Every colour here is an explicit hex. components/pnb-theme.css
+           rewrites Tailwind's slate/indigo/amber families with !important,
+           so a utility class like text-slate-700 cannot be trusted to mean
+           what it says on this page — that override has already produced
+           white-on-white text twice in this project.
+
+           Content sits on light cards rather than the branded maroon panel.
+           That is a measured decision, not a stylistic one: the maroon
+           surface is itself red, so a "Critical" red mark scores only 2.22:1
+           against it — below the 3:1 floor for chart marks. On the light
+           chart surface the same palette clears it. The page keeps its
+           maroon/gold brand; the charts get a neutral canvas. */
+        :root {
+            --surface: #fcfcfb;
+            /* chart + card surface */
+            --ink: #0b0b0b;
+            --ink-2: #52514e;
+            --ink-muted: #898781;
+            --grid: #e1e0d9;
+            --baseline: #c3c2b7;
+            --hairline: rgba(11, 11, 11, 0.10);
+
+            /* Magnitude / nominal bars: ONE hue. Bar length already encodes
+               the value, so colour is not spent re-encoding it. Validated
+               against #fcfcfb — passes lightness band, chroma floor and
+               contrast. */
+            --series-1: #a80024;
+
+            /* Status scale (ordinal state, good -> critical). Reserved
+               meaning, and always shipped with an icon + text label so
+               colour never carries the meaning alone. */
+            --st-good: #0ca30c;
+            --st-warning: #fab219;
+            --st-serious: #ec835a;
+            --st-critical: #d03b3b;
+
+            --brand: #a80024;
+            --brand-dark: #4E0B11;
+            --gold: #F0C040;
+            --gold-dark: #D4A017;
+        }
+
+        body {
+            background-color: #4E0B11;
+            background-image: url('/components/pnb_bg.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            font-family: 'Inter', system-ui, sans-serif;
+            color: var(--ink);
+        }
+
+        .a-card {
+            background: var(--surface) !important;
+            border: 1px solid var(--hairline) !important;
+            border-radius: 14px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .22);
+        }
+
+        .a-h2 {
+            color: var(--ink) !important;
+            font-weight: 800;
+            font-size: 15px;
+        }
+
+        .a-sub {
+            color: var(--ink-2) !important;
+            font-size: 11.5px;
+            line-height: 1.5;
+        }
+
+        .a-muted {
+            color: var(--ink-muted) !important;
+        }
+
+        .a-ink {
+            color: var(--ink) !important;
+        }
+
+        .a-ink2 {
+            color: var(--ink-2) !important;
+        }
+
+        /* Hero / stat numbers — magnitude reads from size, not colour. */
+        .a-hero {
+            font-size: 30px;
+            font-weight: 800;
+            color: var(--ink) !important;
+            line-height: 1.1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .a-tile-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .07em;
+            text-transform: uppercase;
+            color: var(--ink-muted) !important;
+        }
+
+        /* Status chip: colour swatch + text label, always together. */
+        .a-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--ink) !important;
+            white-space: nowrap;
+        }
+
+        .a-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            /* Darker ring so the two lighter status steps (warning, serious)
+               still read as a defined mark on the light surface — the
+               documented relief for their sub-3:1 contrast. */
+            border: 1.5px solid rgba(11, 11, 11, .35);
+        }
+
+        table.a-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        table.a-table th {
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--ink-muted) !important;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--baseline);
+            white-space: nowrap;
+        }
+
+        table.a-table td {
+            padding: 9px 10px;
+            color: var(--ink) !important;
+            border-bottom: 1px solid var(--grid);
+            vertical-align: middle;
+        }
+
+        table.a-table tbody tr:hover td {
+            background: #f4f3ef;
+        }
+
+        table.a-table td.num {
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .a-scroll {
+            overflow-x: auto;
+        }
+
+        .a-link {
+            color: var(--brand) !important;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .a-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Inline magnitude bar for table rows — same single hue as the charts. */
+        .a-bar-track {
+            height: 6px;
+            background: var(--grid);
+            border-radius: 3px;
+            overflow: hidden;
+            min-width: 60px;
+        }
+
+        .a-bar-fill {
+            height: 6px;
+            background: var(--series-1);
+            border-radius: 3px;
+        }
+
+        .a-btn {
+            background: var(--gold) !important;
+            color: var(--brand-dark) !important;
+            border: 1px solid var(--gold-dark) !important;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 7px 13px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .a-btn:hover {
+            background: #F7D165 !important;
+            color: var(--brand-dark) !important;
+        }
+
+        .a-btn-ghost {
+            background: transparent !important;
+            color: var(--ink-2) !important;
+            border: 1px solid var(--baseline) !important;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 6px 11px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .a-btn-ghost:hover {
+            background: #f1f0ec !important;
+            color: var(--ink) !important;
+        }
+
+        select.a-select {
+            background: #fff !important;
+            color: var(--ink) !important;
+            border: 1px solid var(--baseline) !important;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 10px;
+        }
+
+        /* Empty state — deliberately plain text, never a placeholder chart.
+           With sparse data a styled-but-empty chart reads as "we have data
+           and it is zero", which is a different and false claim. */
+        .a-empty {
+            color: var(--ink-muted) !important;
+            font-size: 12px;
+            padding: 22px 12px;
+            text-align: center;
+            background: #f6f5f1;
+            border: 1px dashed var(--baseline);
+            border-radius: 10px;
+        }
+
+        .a-verdict {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 5px 11px;
+            border-radius: 999px;
+            border: 1px solid var(--hairline);
+            background: #f6f5f1;
+            color: var(--ink) !important;
+        }
+
+        .fade-in {
+            animation: fadeIn .4s ease both;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .spin {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border: 2px solid rgba(168, 0, 36, .25);
+            border-top-color: var(--brand);
+            border-radius: 50%;
+            animation: sp .6s linear infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes sp {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- ── Page header ──────────────────────────────────────────────
+             The header sits in its own dark band rather than directly on the
+             page background. pnb_bg.png is a LIGHT texture, so gold and
+             near-white heading text placed straight onto it washes out to
+             nearly invisible — the band guarantees the contrast the text
+             colours were chosen for regardless of what the backdrop does. -->
+        <div class="mb-6 rounded-xl px-6 py-5 flex items-start justify-between gap-4 flex-wrap"
+            style="background:linear-gradient(135deg,#4E0B11,#7B1520); border:1px solid rgba(212,160,23,.35); box-shadow:0 6px 18px rgba(0,0,0,.25);">
+            <div>
+                <h1 class="text-2xl font-extrabold" style="color:#F0C040;">Scan History &amp; Analytics</h1>
+                <p class="text-sm" style="color:#F5EDED;">
+                    Cross-scan post-quantum posture across every domain on your account.
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="lastScan" class="text-[11px]" style="color:#E7C9C9;"></span>
+                <button id="refreshBtn" class="a-btn" type="button">↻ Refresh</button>
+            </div>
+        </div>
+
+        <!-- ── Auth gate ─────────────────────────────────────────────────
+             Analytics is scoped to the signed-in account, so an anonymous
+             visitor gets an explanation and a way in rather than an empty
+             page that looks broken. -->
+        <div id="authGate" class="a-card p-8 hidden text-center">
+            <div class="text-4xl mb-3">🔒</div>
+            <h2 class="a-h2 mb-2">Sign in to view your analytics</h2>
+            <p class="a-sub mb-5 max-w-md mx-auto">
+                This page aggregates the scans linked to your account — domain tiers, riskiest
+                subdomains, posture trends and a fleet-wide crypto rollup.
+            </p>
+            <a href="/login" class="a-btn" style="text-decoration:none;">Go to Login</a>
+        </div>
+
+        <div id="loadingState" class="a-card p-8 text-center">
+            <span class="spin"></span>
+            <span class="a-sub ml-2">Loading your scan estate…</span>
+        </div>
+
+        <div id="errorState" class="a-card p-6 hidden">
+            <h2 class="a-h2 mb-1">Could not load analytics</h2>
+            <p class="a-sub" id="errorText"></p>
+        </div>
+
+        <!-- ── Everything below renders only once data is in ──────────── -->
+        <div id="content" class="hidden space-y-6">
+
+            <!-- No scans at all -->
+            <div id="noScans" class="a-card p-10 hidden text-center">
+                <div class="text-4xl mb-3 opacity-40">🔍</div>
+                <h2 class="a-h2 mb-2">No scans on this account yet</h2>
+                <p class="a-sub mb-5">Run your first scan and its analysis will appear here.</p>
+                <a href="/" class="a-btn" style="text-decoration:none;">Scan a Domain</a>
+            </div>
+
+            <div id="dataSections" class="space-y-6">
+
+                <!-- ── Overview tiles ───────────────────────────────────── -->
+                <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 fade-in">
+                    <div class="a-card p-5">
+                        <p class="a-tile-label mb-1">Scans</p>
+                        <p class="a-hero" id="ovScans">–</p>
+                        <p class="a-sub mt-1" id="ovScansSub">&nbsp;</p>
+                    </div>
+                    <div class="a-card p-5">
+                        <p class="a-tile-label mb-1">Domains</p>
+                        <p class="a-hero" id="ovDomains">–</p>
+                        <p class="a-sub mt-1" id="ovDomainsSub">&nbsp;</p>
+                    </div>
+                    <div class="a-card p-5" id="ovRatingCard">
+                        <p class="a-tile-label mb-1">Fleet Rating</p>
+                        <div class="flex items-baseline gap-1">
+                            <p class="a-hero" id="ovRating">–</p>
+                            <span class="a-sub font-bold">/1000</span>
+                        </div>
+                        <p class="mt-1"><span class="a-chip" id="ovTier"></span></p>
+                    </div>
+                    <div class="a-card p-5">
+                        <p class="a-tile-label mb-1">PQC Adoption</p>
+                        <div class="flex items-baseline gap-1">
+                            <p class="a-hero" id="ovPqc">–</p>
+                            <span class="a-sub font-bold">%</span>
+                        </div>
+                        <p class="a-sub mt-1" id="ovPqcSub">&nbsp;</p>
+                    </div>
+                </section>
+
+                <!-- ── Host posture tier distribution ───────────────────
+                     The spread behind the Fleet Rating tile above. An estate
+                     averaging "Standard" could be uniformly mediocre or half
+                     Elite-PQC and half Legacy — two very different remediation
+                     problems that the single headline tier cannot tell apart.
+
+                     Bars, not a doughnut: five ordinal categories compare by
+                     length far better than by arc, and the doughnut form is
+                     already spent on risk bands below. -->
+                <section class="a-card p-6 fade-in">
+                    <div class="flex items-start justify-between gap-3 mb-1 flex-wrap">
+                        <div>
+                            <h2 class="a-h2">Host Posture Tier Distribution</h2>
+                            <p class="a-sub">
+                                Every unique host placed in one of the five posture tiers, counted once at
+                                its latest scan. A host's tier is its own Enterprise Rating — the tier it
+                                would drag a fleet to on its own. Tiers rank <strong>migration
+                                readiness</strong>; the risk bands below rank <strong>quantum
+                                exposure</strong>, so a host can be Advanced here and still Quantum
+                                Vulnerable there.
+                            </p>
+                        </div>
+                        <button class="a-btn-ghost" type="button" data-table-toggle="tiersTable">Table view</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center mt-3">
+                        <div id="tiersChartWrap" style="height:220px; position:relative;">
+                            <canvas id="tiersChart"></canvas>
+                        </div>
+                        <div id="tiersLegend" class="space-y-2"></div>
+                    </div>
+                    <div id="tiersTable" class="hidden mt-4 a-scroll"></div>
+                </section>
+
+                <!-- ── Risk band distribution ───────────────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="flex items-start justify-between gap-3 mb-1 flex-wrap">
+                        <div>
+                            <h2 class="a-h2">Risk Band Distribution</h2>
+                            <p class="a-sub">Every unique host across your estate, counted once at its latest scan.</p>
+                        </div>
+                        <button class="a-btn-ghost" type="button" data-table-toggle="bandsTable">Table view</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center mt-3">
+                        <div style="height:220px; position:relative;">
+                            <canvas id="bandsChart"></canvas>
+                        </div>
+                        <div id="bandsLegend" class="space-y-2"></div>
+                    </div>
+                    <div id="bandsTable" class="hidden mt-4 a-scroll"></div>
+                </section>
+
+                <!-- ── Domain / company tier leaderboard ────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="mb-3">
+                        <h2 class="a-h2">Domain Posture Leaderboard</h2>
+                        <p class="a-sub">
+                            One row per domain, ranked by its most recent scan that returned crypto data.
+                            Domains whose latest scan reached no hosts are listed last and marked
+                            <strong>unranked</strong> — no data is not the same as no risk.
+                        </p>
+                    </div>
+                    <div class="a-scroll">
+                        <table class="a-table" id="leaderboardTable"></table>
+                    </div>
+                </section>
+
+                <!-- ── Riskiest subdomains ──────────────────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="flex items-start justify-between gap-3 mb-3 flex-wrap">
+                        <div>
+                            <h2 class="a-h2">Riskiest Subdomains</h2>
+                            <p class="a-sub">
+                                Worst individual hosts anywhere in your estate, with the single weighted component
+                                that contributed most to each score.
+                            </p>
+                        </div>
+                        <select id="riskyLimit" class="a-select">
+                            <option value="10">Top 10</option>
+                            <option value="25" selected>Top 25</option>
+                            <option value="50">Top 50</option>
+                        </select>
+                    </div>
+                    <div class="a-scroll">
+                        <table class="a-table" id="riskyTable"></table>
+                    </div>
+                </section>
+
+                <!-- ── Domain trend over time ───────────────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="flex items-start justify-between gap-3 mb-3 flex-wrap">
+                        <div>
+                            <h2 class="a-h2">Posture Trend Over Time</h2>
+                            <p class="a-sub">Enterprise Rating across repeat scans of one domain. Higher is better.</p>
+                        </div>
+                        <select id="trendDomain" class="a-select"></select>
+                    </div>
+                    <div id="trendVerdict" class="mb-3"></div>
+                    <div id="trendChartWrap" style="height:240px; position:relative;">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                    <div id="trendEmpty" class="a-empty hidden"></div>
+                    <div class="a-scroll mt-4">
+                        <table class="a-table" id="trendTable"></table>
+                    </div>
+                </section>
+
+                <!-- ── Crypto rollup ────────────────────────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="mb-4">
+                        <h2 class="a-h2">Fleet Crypto Rollup</h2>
+                        <p class="a-sub">
+                            What cryptography is actually deployed across <span id="cryptoHostCount">0</span> hosts,
+                            and where the weakest links cluster.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <p class="a-tile-label mb-2">TLS Versions</p>
+                            <div style="height:150px; position:relative;"><canvas id="tlsChart"></canvas></div>
+                        </div>
+                        <div>
+                            <p class="a-tile-label mb-2">Certificate Key Algorithms</p>
+                            <div style="height:150px; position:relative;"><canvas id="keyAlgChart"></canvas></div>
+                        </div>
+                        <div>
+                            <p class="a-tile-label mb-2">Key Exchange</p>
+                            <div style="height:150px; position:relative;"><canvas id="kexChart"></canvas></div>
+                        </div>
+                        <div>
+                            <p class="a-tile-label mb-2">Hash Functions</p>
+                            <div style="height:150px; position:relative;"><canvas id="hashChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 pt-5"
+                        style="border-top:1px solid var(--grid);">
+                        <div>
+                            <p class="a-tile-label mb-2">Most Common Weakest Component</p>
+                            <p class="a-sub mb-2">
+                                For each host, the component that contributed most to its score — i.e. the
+                                highest-leverage fix.
+                            </p>
+                            <div id="weakestList" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <p class="a-tile-label mb-2">Certificate Findings</p>
+                            <p class="a-sub mb-2">Real validation results, counted across unique hosts.</p>
+                            <div class="a-scroll">
+                                <table class="a-table" id="certFindingsTable"></table>
+                            </div>
+                            <p class="a-tile-label mb-2 mt-5">HNDL Exposure</p>
+                            <div id="hndlList" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ── Full scan history ────────────────────────────────── -->
+                <section class="a-card p-6 fade-in">
+                    <div class="flex items-start justify-between gap-3 mb-3 flex-wrap">
+                        <div>
+                            <h2 class="a-h2">All Scans</h2>
+                            <p class="a-sub">Complete scan history. Click a scan to open its full dashboard.</p>
+                        </div>
+                        <input type="text" id="historySearch" placeholder="Filter by domain…" class="a-select"
+                            style="min-width:180px;">
+                    </div>
+                    <div class="a-scroll">
+                        <table class="a-table" id="historyTable"></table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- ── Delete confirmation ───────────────────────────────────────────
+         A custom modal rather than window.confirm(): deletion is
+         irreversible, so the dialog names the exact scan and spells out what
+         goes with it instead of showing a generic browser prompt. -->
+    <div id="deleteModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center px-4"
+        style="background:rgba(0,0,0,.6);">
+        <div class="a-card p-6 w-full" style="max-width:460px;">
+            <h2 class="a-h2 mb-2">Delete this scan?</h2>
+            <p class="a-sub mb-4">
+                <strong id="delScanLabel" class="a-ink"></strong> will be permanently removed from your
+                history, analytics, domain leaderboard, trends and the result cache.
+                <strong class="a-ink">This cannot be undone.</strong>
+            </p>
+            <div id="delError" class="hidden mb-3" style="font-size:12px;color:#d03b3b;font-weight:600;"></div>
+            <div class="flex justify-end gap-2">
+                <button id="delCancel" class="a-btn-ghost" type="button">Cancel</button>
+                <button id="delConfirm" type="button"
+                    style="background:#d03b3b;color:#fff;border:1px solid #a82f2f;font-weight:800;font-size:11px;padding:7px 13px;border-radius:8px;cursor:pointer;">
+                    Delete permanently
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/components/sidebar.js"></script>
+    <script src="/components/ai-agent.js?v=10"></script>
+    <link rel="stylesheet" href="/css/ai-agent.css?v=6">
+
+    <script>
+        /* ═══════════════════════════════════════════════════════════════
+           Analytics page controller.
+
+           Colour rules applied throughout (see the token block above):
+             - Magnitude/nominal bars use ONE hue. Bar length already encodes
+               the value, so colour is not spent re-encoding it.
+             - Risk bands and posture tiers are ORDINAL STATE, so they use the
+               reserved status scale and are ALWAYS rendered as swatch + text
+               label. Colour never carries meaning on its own anywhere here.
+             - Charts carry hover tooltips; every chart also has a table or
+               labelled list beside it, so no value is colour- or
+               pixel-only.
+           ═══════════════════════════════════════════════════════════════ */
+
+        const TOKENS = {
+            surface: '#fcfcfb', ink: '#0b0b0b', ink2: '#52514e', muted: '#898781',
+            grid: '#e1e0d9', baseline: '#c3c2b7', series1: '#a80024',
+        };
+
+        // Ordinal status scale. Order is meaningful (best -> worst).
+        const BAND_ORDER = ['Quantum Safe', 'Transitioning', 'Quantum Vulnerable', 'Critical'];
+        const BAND_COLOR = {
+            'Quantum Safe': '#0ca30c',
+            'Transitioning': '#fab219',
+            'Quantum Vulnerable': '#ec835a',
+            'Critical': '#d03b3b',
+        };
+        const BAND_ICON = {
+            'Quantum Safe': '✓', 'Transitioning': '◐',
+            'Quantum Vulnerable': '▲', 'Critical': '■',
+        };
+        // Five posture tiers on the reserved status scale, extended by one
+        // step. Elite-PQC and Advanced previously shared #0ca30c, which made
+        // two of the five swatches identical — tolerable when a tier only ever
+        // appeared as a labelled chip, wrong now that the five are charted
+        // side by side. Elite-PQC takes a darker step of the SAME green rather
+        // than a sixth hue: the scale is ordinal, so same-hue/darker keeps it
+        // reading as one ramp instead of five unrelated categories.
+        //
+        // Validated against the #fcfcfb chart surface: lightness band and
+        // chroma floor pass. The warning and serious steps carry the same
+        // sub-3:1 contrast the rest of this page already documents, and take
+        // the same relief — the darker .a-dot ring, a text label that is never
+        // omitted, and a table view.
+        // 'Elite-PQC' is kept alongside 'Elite': the engine renamed the top
+        // tier, and a stale key here would silently drop a tier back to the
+        // grey N/A swatch rather than failing loudly.
+        // No hardcoded tier list on this page. Both the set of tiers and their
+        // best -> worst order come from the server, which derives them from the
+        // engine's POSTURE_TIERS — so renaming or re-banding a tier in the
+        // engine can never leave this page charting a stale set.
+        const TIER_COLOR = {
+            'Elite': '#0a6b1f', 'Elite-PQC': '#0a6b1f', 'Advanced': '#0ca30c',
+            'Standard': '#fab219', 'Developing': '#ec835a', 'Legacy': '#d03b3b',
+            'N/A': '#898781',
+        };
+        // Second, non-colour channel for tier identity, same role the band
+        // icons play — a reader who cannot separate the two greens still gets
+        // the ordering from the glyph.
+        const TIER_ICON = {
+            'Elite': '★', 'Elite-PQC': '★', 'Advanced': '✓', 'Standard': '◐',
+            'Developing': '▲', 'Legacy': '■',
+        };
+
+        let TOKEN = null;
+        let charts = {};
+        let cache = { overview: null, domains: null, risky: null, crypto: null, history: null };
+
+        /* ── Small helpers ──────────────────────────────────────────── */
+        const $ = (id) => document.getElementById(id);
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        function fmtDate(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return isNaN(d) ? String(iso).slice(0, 16)
+                : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function fmtDay(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return isNaN(d) ? String(iso).slice(0, 10)
+                : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+
+        function chip(label, color) {
+            return `<span class="a-chip"><span class="a-dot" style="background:${color}"></span>${esc(label)}</span>`;
+        }
+
+        function bandChip(label) {
+            const c = BAND_COLOR[label] || TOKENS.muted;
+            const icon = BAND_ICON[label] || '';
+            return `<span class="a-chip"><span class="a-dot" style="background:${c}"></span>${icon} ${esc(label)}</span>`;
+        }
+
+        function tierChip(tier) {
+            const label = tier || 'N/A';
+            const c = TIER_COLOR[label] || TOKENS.muted;
+            const icon = TIER_ICON[label] || '';
+            return `<span class="a-chip"><span class="a-dot" style="background:${c}"></span>${icon} ${esc(label)}</span>`;
+        }
+
+        // Scan lifecycle status. 'failed' now also covers a scan that ran
+        // cleanly but reached zero hosts, so the label spells that out
+        // rather than implying the scanner itself crashed.
+        const STATUS_COLOR = {
+            completed: '#0ca30c', failed: '#d03b3b', running: '#fab219',
+            queued: '#898781', paused: '#898781', cancelled: '#898781',
+        };
+
+        function statusChip(status) {
+            const s = String(status || 'unknown').toLowerCase();
+            const label = s.charAt(0).toUpperCase() + s.slice(1);
+            return `<span class="a-chip"><span class="a-dot" style="background:${STATUS_COLOR[s] || TOKENS.muted}"></span>${esc(label)}</span>`;
+        }
+
+        function inlineBar(value, max) {
+            const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+            return `<div class="a-bar-track"><div class="a-bar-fill" style="width:${pct}%"></div></div>`;
+        }
+
+        /* ── Chart.js shared config ─────────────────────────────────── */
+        // Recessive grid and axes; ink for text. Chart.js defaults are tuned
+        // for a dark canvas and would render near-invisible labels here.
+        function baseScales(opts = {}) {
+            return {
+                x: {
+                    grid: { color: TOKENS.grid, drawBorder: false },
+                    border: { color: TOKENS.baseline },
+                    ticks: { color: TOKENS.muted, font: { size: 10 } },
+                    ...(opts.x || {}),
+                },
+                y: {
+                    grid: { color: TOKENS.grid, drawBorder: false },
+                    border: { color: TOKENS.baseline },
+                    ticks: { color: TOKENS.muted, font: { size: 10 } },
+                    ...(opts.y || {}),
+                },
+            };
+        }
+
+        const TOOLTIP = {
+            backgroundColor: '#0b0b0b', titleColor: '#ffffff', bodyColor: '#e7e6e0',
+            borderColor: 'rgba(255,255,255,.15)', borderWidth: 1, padding: 9,
+            titleFont: { size: 11, weight: '700' }, bodyFont: { size: 11 }, displayColors: true,
+        };
+
+        function destroy(key) {
+            if (charts[key]) { charts[key].destroy(); delete charts[key]; }
+        }
+
+        /**
+         * Horizontal magnitude bars, single hue, 4px rounded data-ends
+         * anchored at the baseline. Used for every distribution on the page.
+         */
+        function renderMagnitudeBars(canvasId, rows, labelKey, valueKey, unitLabel) {
+            destroy(canvasId);
+            const el = $(canvasId);
+            if (!el) return;
+            if (!rows || rows.length === 0) {
+                const p = el.parentElement;
+                p.innerHTML = `<div class="a-empty">No data</div>`;
+                return;
+            }
+            const top = rows.slice(0, 6);
+            charts[canvasId] = new Chart(el, {
+                type: 'bar',
+                data: {
+                    labels: top.map(r => String(r[labelKey] ?? 'unknown')),
+                    datasets: [{
+                        label: unitLabel,
+                        data: top.map(r => r[valueKey]),
+                        backgroundColor: TOKENS.series1,
+                        borderRadius: 4,
+                        borderSkipped: 'start',
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.82,
+                    }],
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }, // single series — the panel title names it
+                        tooltip: {
+                            ...TOOLTIP,
+                            callbacks: {
+                                label: (c) => {
+                                    const r = top[c.dataIndex];
+                                    return ` ${r[valueKey]} host${r[valueKey] === 1 ? '' : 's'}`
+                                        + (r.percent != null ? ` (${r.percent}%)` : '');
+                                },
+                            },
+                        },
+                    },
+                    scales: baseScales({
+                        x: { beginAtZero: true, ticks: { color: TOKENS.muted, font: { size: 10 }, precision: 0 } },
+                        y: { grid: { display: false }, ticks: { color: TOKENS.ink2, font: { size: 10 } } },
+                    }),
+                },
+            });
+        }
+
+        /* ── Auth ───────────────────────────────────────────────────── */
+        function authHeaders() {
+            return { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+        }
+
+        async function getJSON(path) {
+            const res = await fetch(path, { headers: authHeaders() });
+            if (res.status === 401) { showGate(); throw new Error('unauthorized'); }
+            if (!res.ok) throw new Error(`${path} returned ${res.status}`);
+            return res.json();
+        }
+
+        function showGate() {
+            $('loadingState').classList.add('hidden');
+            $('content').classList.add('hidden');
+            $('errorState').classList.add('hidden');
+            $('authGate').classList.remove('hidden');
+        }
+
+        /* ── Renderers ──────────────────────────────────────────────── */
+        function renderOverview(o) {
+            $('ovScans').textContent = o.total_scans;
+            $('ovScansSub').textContent = o.scans_with_crypto_data === o.total_scans
+                ? 'all returned crypto data'
+                : `${o.scans_with_crypto_data} returned crypto data`;
+
+            $('ovDomains').textContent = o.total_domains;
+            $('ovDomainsSub').textContent = `${o.unique_hosts} unique host${o.unique_hosts === 1 ? '' : 's'} scanned`;
+
+            $('ovRating').textContent = o.enterprise_rating;
+            const tierColor = TIER_COLOR[o.posture_tier] || TOKENS.muted;
+            $('ovTier').innerHTML =
+                `<span class="a-dot" style="background:${tierColor}"></span>`
+                + `${esc(o.posture_tier)} · avg risk ${o.average_risk_score}/100`;
+
+            // PQC adoption is reported on key exchange, the heaviest-weighted
+            // component; the signature figure is shown beneath rather than
+            // averaged with it, because the two migrate independently.
+            $('ovPqc').textContent = o.pqc_key_exchange_percent;
+            $('ovPqcSub').textContent =
+                `key exchange · ${o.pqc_signature_percent}% signatures`;
+
+            $('lastScan').textContent = o.last_scan_at ? `Last scan ${fmtDate(o.last_scan_at)}` : '';
+        }
+
+        /**
+         * Five posture tiers, best -> worst. The server sends every tier
+         * including the empty ones, and they are all drawn: "Legacy: 0" is a
+         * finding, and dropping empty rows would change the chart's category
+         * set from one account to the next.
+         */
+        function renderTiers(o) {
+            // Fall back to counting the tier_counts map if an older payload
+            // arrives without the ordered list.
+            const rows = o.tier_distribution
+                || Object.entries(o.tier_counts || {})
+                    .map(([tier, hosts]) => ({ tier, hosts, percent: 0 }));
+            const total = rows.reduce((s, r) => s + r.hosts, 0);
+
+            destroy('tiersChart');
+            if (total === 0) {
+                $('tiersChartWrap').innerHTML =
+                    `<div class="a-empty">No scored hosts yet — no scan on this account has returned TLS data.</div>`;
+                $('tiersLegend').innerHTML = '';
+                $('tiersTable').innerHTML = '';
+                return;
+            }
+            // Rebuild the canvas when the previous render left an empty state
+            // in its place — Refresh and Delete both re-run this against a
+            // fleet that may have gained or lost its first scored host.
+            if (!$('tiersChart')) {
+                $('tiersChartWrap').innerHTML = '<canvas id="tiersChart"></canvas>';
+            }
+
+            // Single hue: bar length already encodes the count, so colour is
+            // not spent re-encoding it. Tier identity lives in the axis label
+            // and in the legend swatches beside the chart.
+            renderMagnitudeBars(
+                'tiersChart',
+                rows.map(r => ({ value: r.tier, count: r.hosts, percent: r.percent })),
+                'value', 'count', 'Hosts');
+
+            $('tiersLegend').innerHTML = rows.map(r => `
+                <div class="flex items-center justify-between gap-3">
+                    <span>
+                        ${tierChip(r.tier)}
+                        <span class="a-muted" style="font-size:10px;margin-left:4px;">
+                            rating ${r.rating_min ?? ''}${r.rating_min != null ? '–' : ''}${r.rating_max ?? ''}
+                        </span>
+                    </span>
+                    <span class="a-ink2" style="font-size:12px;font-variant-numeric:tabular-nums;">
+                        <strong class="a-ink">${r.hosts}</strong> · ${r.percent}%
+                    </span>
+                </div>`).join('');
+
+            $('tiersTable').innerHTML = `<table class="a-table">
+                <thead><tr>
+                    <th>Posture tier</th><th>Rating range</th>
+                    <th class="num">Hosts</th><th class="num">Share</th>
+                </tr></thead>
+                <tbody>${rows.map(r => `<tr>
+                    <td>${tierChip(r.tier)}</td>
+                    <td class="a-ink2">${r.rating_min ?? '—'}–${r.rating_max ?? '—'}</td>
+                    <td class="num">${r.hosts}</td>
+                    <td class="num">${r.percent}%</td>
+                </tr>`).join('')}
+                <tr><td><strong>Total</strong></td><td></td>
+                    <td class="num"><strong>${total}</strong></td><td class="num">100%</td></tr>
+                </tbody></table>`;
+        }
+
+        function renderBands(o) {
+            const counts = o.band_counts || {};
+            const present = BAND_ORDER.filter(b => (counts[b] || 0) > 0);
+            const total = BAND_ORDER.reduce((s, b) => s + (counts[b] || 0), 0);
+
+            destroy('bandsChart');
+            if (total === 0) {
+                $('bandsChart').parentElement.innerHTML =
+                    `<div class="a-empty">No scored hosts yet — no scan on this account has returned TLS data.</div>`;
+                $('bandsLegend').innerHTML = '';
+                $('bandsTable').innerHTML = '';
+                return;
+            }
+
+            // 2px surface-coloured gap between segments so adjacent arcs read
+            // as separate marks rather than one continuous band.
+            charts.bandsChart = new Chart($('bandsChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: present,
+                    datasets: [{
+                        data: present.map(b => counts[b]),
+                        backgroundColor: present.map(b => BAND_COLOR[b]),
+                        borderColor: TOKENS.surface,
+                        borderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '58%',
+                    plugins: {
+                        // Legend is rendered as HTML beside the chart so each
+                        // entry pairs its swatch with an icon, a name and a
+                        // count — identity never rests on colour alone.
+                        legend: { display: false },
+                        tooltip: {
+                            ...TOOLTIP,
+                            callbacks: {
+                                label: (c) => ` ${c.label}: ${c.parsed} host${c.parsed === 1 ? '' : 's'}`
+                                    + ` (${Math.round(c.parsed / total * 100)}%)`,
+                            },
+                        },
+                    },
+                },
+            });
+
+            $('bandsLegend').innerHTML = BAND_ORDER.map(b => {
+                const n = counts[b] || 0;
+                const pct = total ? Math.round(n / total * 100) : 0;
+                return `<div class="flex items-center justify-between gap-3">
+                    ${bandChip(b)}
+                    <span class="a-ink2" style="font-size:12px;font-variant-numeric:tabular-nums;">
+                        <strong class="a-ink">${n}</strong> · ${pct}%
+                    </span>
+                </div>`;
+            }).join('');
+
+            $('bandsTable').innerHTML = `<table class="a-table">
+                <thead><tr><th>Risk band</th><th class="num">Hosts</th><th class="num">Share</th></tr></thead>
+                <tbody>${BAND_ORDER.map(b => {
+                const n = counts[b] || 0;
+                return `<tr><td>${bandChip(b)}</td><td class="num">${n}</td>
+                        <td class="num">${total ? Math.round(n / total * 100) : 0}%</td></tr>`;
+            }).join('')}
+                <tr><td><strong>Total</strong></td><td class="num"><strong>${total}</strong></td><td class="num">100%</td></tr>
+                </tbody></table>`;
+        }
+
+        function renderLeaderboard(data) {
+            const rows = data.domains || [];
+            const maxRisk = Math.max(1, ...rows.map(r => r.average_risk_score || 0));
+
+            $('leaderboardTable').innerHTML = `
+                <thead><tr>
+                    <th>Domain</th><th>Posture tier</th><th class="num">Rating</th>
+                    <th>Avg risk</th><th class="num">Hosts</th><th class="num">Unreachable</th>
+                    <th class="num">Scans</th><th>Worst host</th><th>Latest</th><th></th>
+                </tr></thead>
+                <tbody>${rows.map(r => {
+                if (!r.has_crypto_data) {
+                    return `<tr>
+                            <td><strong>${esc(r.domain)}</strong></td>
+                            <td>${chip('Unranked — no TLS data', TOKENS.muted)}</td>
+                            <td class="num">—</td><td>—</td>
+                            <td class="num">0</td><td class="num">${r.assets_failed}</td>
+                            <td class="num">${r.scan_count}</td>
+                            <td class="a-muted">—</td>
+                            <td class="a-ink2">${fmtDate(r.latest_scan_at)}</td>
+                            <td><a class="a-link" href="/dashboard/${r.latest_scan_id}">Open</a></td>
+                        </tr>`;
+                }
+                return `<tr>
+                        <td><strong>${esc(r.domain)}</strong></td>
+                        <td>${tierChip(r.posture_tier)}</td>
+                        <td class="num"><strong>${r.enterprise_rating}</strong></td>
+                        <td>
+                            <div class="flex items-center gap-2">
+                                ${inlineBar(r.average_risk_score, maxRisk)}
+                                <span style="font-size:11px;font-variant-numeric:tabular-nums;">${r.average_risk_score}</span>
+                            </div>
+                        </td>
+                        <td class="num">${r.assets_scanned}</td>
+                        <td class="num">${r.assets_failed}</td>
+                        <td class="num">${r.scan_count}</td>
+                        <td style="font-size:11px;">${esc(r.worst_host || '—')}
+                            ${r.worst_host_score != null ? `<span class="a-muted">(${r.worst_host_score})</span>` : ''}</td>
+                        <td class="a-ink2">${fmtDate(r.latest_scan_at)}</td>
+                        <td><a class="a-link" href="/dashboard/${r.latest_scan_id}">Open</a></td>
+                    </tr>`;
+            }).join('')}</tbody>`;
+        }
+
+        function renderRisky(data) {
+            const hosts = data.hosts || [];
+            if (hosts.length === 0) {
+                $('riskyTable').innerHTML =
+                    `<tbody><tr><td><div class="a-empty">No scored hosts yet.</div></td></tr></tbody>`;
+                return;
+            }
+            $('riskyTable').innerHTML = `
+                <thead><tr>
+                    <th class="num">#</th><th>Host</th><th class="num">Score</th><th>Band</th>
+                    <th>Biggest driver</th><th>TLS</th><th>Key</th><th>Service</th>
+                    <th class="num">HNDL</th><th>Cert flags</th><th></th>
+                </tr></thead>
+                <tbody>${hosts.map((h, i) => {
+                const flags = [];
+                if (h.is_expired) flags.push('expired');
+                if (h.is_self_signed) flags.push('self-signed');
+                if (h.hostname_mismatch) flags.push('mismatch');
+                if (!flags.length && typeof h.days_until_expiry === 'number' && h.days_until_expiry < 30 && h.days_until_expiry >= 0)
+                    flags.push(`${h.days_until_expiry}d left`);
+                return `<tr>
+                        <td class="num a-muted">${i + 1}</td>
+                        <td><strong>${esc(h.hostname)}</strong>
+                            <div class="a-muted" style="font-size:10px;">${esc(h.domain)}</div></td>
+                        <td class="num"><strong>${h.risk_score}</strong></td>
+                        <td>${bandChip(h.risk_label)}</td>
+                        <td style="font-size:11px;">${esc(h.top_component_label)}
+                            <span class="a-muted">(${h.top_component_score})</span></td>
+                        <td style="font-size:11px;">${esc(h.tls_version || '—')}</td>
+                        <td style="font-size:11px;">${esc(h.key_algorithm || '—')}${h.key_size ? ' ' + h.key_size : ''}</td>
+                        <td style="font-size:11px;">${esc(h.service_type || '—')}</td>
+                        <td class="num">×${h.hndl_multiplier}</td>
+                        <td style="font-size:11px;">${flags.length ? esc(flags.join(', ')) : '<span class="a-muted">clean</span>'}</td>
+                        <td><a class="a-link" href="/dashboard/${h.scan_id}">Scan</a></td>
+                    </tr>`;
+            }).join('')}</tbody>`;
+        }
+
+        function renderTrend(t) {
+            const pts = (t.points || []).filter(p => p.has_crypto_data);
+            destroy('trendChart');
+
+            // A single data point is not a trend. Saying so plainly is more
+            // useful than plotting one dot on an axis, which implies a
+            // measured trajectory that does not exist yet.
+            if (!t.has_trend) {
+                $('trendChartWrap').classList.add('hidden');
+                $('trendEmpty').classList.remove('hidden');
+                $('trendEmpty').innerHTML = t.comparable_scans === 0
+                    ? `<strong>${esc(t.domain)}</strong> has ${t.total_scans} scan(s), but none returned TLS data,
+                       so there is no posture to trend yet.`
+                    : `<strong>${esc(t.domain)}</strong> has only ${t.comparable_scans} scan with crypto data.
+                       A trend needs at least 2 — re-scan this domain to create a comparison point.`;
+                $('trendVerdict').innerHTML = '';
+            } else {
+                $('trendChartWrap').classList.remove('hidden');
+                $('trendEmpty').classList.add('hidden');
+
+                const o = t.overall;
+                const improved = o.rating_change > 0;
+                const same = o.rating_change === 0;
+                const color = same ? TOKENS.muted : (improved ? BAND_COLOR['Quantum Safe'] : BAND_COLOR['Critical']);
+                const arrow = same ? '→' : (improved ? '▲' : '▼');
+                $('trendVerdict').innerHTML =
+                    `<span class="a-verdict"><span class="a-dot" style="background:${color}"></span>
+                        ${arrow} ${same ? 'Unchanged' : (improved ? 'Improved' : 'Regressed')}
+                        · rating ${o.rating_change > 0 ? '+' : ''}${o.rating_change}
+                        (${esc(o.tier_from)} → ${esc(o.tier_to)})
+                     </span>`;
+
+                // Single series: 2px line, markers ≥ 8px, no legend box —
+                // the panel title names the measure.
+                charts.trendChart = new Chart($('trendChart'), {
+                    type: 'line',
+                    data: {
+                        labels: pts.map(p => fmtDay(p.created_at)),
+                        datasets: [{
+                            label: 'Enterprise Rating',
+                            data: pts.map(p => p.enterprise_rating),
+                            borderColor: TOKENS.series1,
+                            backgroundColor: 'rgba(168,0,36,.10)',
+                            borderWidth: 2,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: TOKENS.series1,
+                            pointBorderColor: TOKENS.surface,
+                            pointBorderWidth: 2,
+                            fill: true,
+                            tension: 0.25,
+                        }],
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                ...TOOLTIP,
+                                callbacks: {
+                                    afterBody: (items) => {
+                                        const p = pts[items[0].dataIndex];
+                                        return [`Tier: ${p.posture_tier}`,
+                                        `Avg risk: ${p.average_risk_score}/100`,
+                                        `Hosts: ${p.assets_scanned} scanned, ${p.assets_failed} unreachable`];
+                                    },
+                                },
+                            },
+                        },
+                        scales: baseScales({
+                            y: {
+                                beginAtZero: true, max: 1000,
+                                ticks: { color: TOKENS.muted, font: { size: 10 }, stepSize: 250 },
+                                title: { display: true, text: 'Rating (0–1000)', color: TOKENS.muted, font: { size: 10 } },
+                            },
+                            x: { grid: { display: false } },
+                        }),
+                    },
+                });
+            }
+
+            const all = t.points || [];
+            $('trendTable').innerHTML = all.length === 0 ? '' : `
+                <thead><tr>
+                    <th>Scan date</th><th class="num">Rating</th><th>Tier</th>
+                    <th class="num">Avg risk</th><th class="num">Hosts</th>
+                    <th class="num">Unreachable</th><th>Change</th><th></th>
+                </tr></thead>
+                <tbody>${all.map(p => `<tr>
+                    <td>${fmtDate(p.created_at)}</td>
+                    <td class="num">${p.has_crypto_data ? `<strong>${p.enterprise_rating}</strong>` : '—'}</td>
+                    <td>${p.has_crypto_data ? tierChip(p.posture_tier) : chip('No TLS data', TOKENS.muted)}</td>
+                    <td class="num">${p.has_crypto_data ? p.average_risk_score : '—'}</td>
+                    <td class="num">${p.assets_scanned}</td>
+                    <td class="num">${p.assets_failed}</td>
+                    <td style="font-size:11px;">${p.rating_delta == null ? '<span class="a-muted">baseline</span>'
+                    : `${p.rating_delta > 0 ? '▲ +' : (p.rating_delta < 0 ? '▼ ' : '→ ')}${p.rating_delta === 0 ? '0' : p.rating_delta}`}</td>
+                    <td><a class="a-link" href="/dashboard/${p.scan_id}">Open</a></td>
+                </tr>`).join('')}</tbody>`;
+        }
+
+        function renderCrypto(c) {
+            $('cryptoHostCount').textContent = c.hosts_analyzed;
+
+            renderMagnitudeBars('tlsChart', c.tls_versions, 'value', 'count');
+            renderMagnitudeBars('keyAlgChart', c.key_algorithms, 'value', 'count');
+            renderMagnitudeBars('kexChart', c.key_exchanges, 'value', 'count');
+            renderMagnitudeBars('hashChart', c.hashes, 'value', 'count');
+
+            const weakest = c.weakest_components || [];
+            const maxW = Math.max(1, ...weakest.map(w => w.hosts));
+            $('weakestList').innerHTML = weakest.length === 0
+                ? `<div class="a-empty">No scored hosts yet.</div>`
+                : weakest.map(w => `
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <span class="a-ink2" style="font-size:11.5px;">${esc(w.label)}
+                                <span class="a-muted">· ${(w.weight * 100).toFixed(0)}% weight</span></span>
+                            <span class="a-ink" style="font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;">
+                                ${w.hosts} host${w.hosts === 1 ? '' : 's'} · ${w.percent}%</span>
+                        </div>
+                        ${inlineBar(w.hosts, maxW)}
+                    </div>`).join('');
+
+            const f = c.certificate_findings || {};
+            const findings = [
+                ['Expired certificates', f.expired],
+                ['Self-signed certificates', f.self_signed],
+                ['Hostname mismatches', f.hostname_mismatch],
+                ['Expiring within 30 days', f.expiring_within_30_days],
+            ];
+            $('certFindingsTable').innerHTML = `
+                <thead><tr><th>Finding</th><th class="num">Hosts</th></tr></thead>
+                <tbody>${findings.map(([label, n]) => `<tr>
+                    <td>${esc(label)}</td>
+                    <td class="num">${n > 0 ? `<strong>${n}</strong>` : '<span class="a-muted">0</span>'}</td>
+                </tr>`).join('')}</tbody>`;
+
+            const hndl = c.hndl_levels || [];
+            const maxH = Math.max(1, ...hndl.map(h => h.count));
+            $('hndlList').innerHTML = hndl.length === 0
+                ? `<div class="a-empty">No data</div>`
+                : hndl.map(h => `
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <span class="a-ink2" style="font-size:11.5px;text-transform:capitalize;">${esc(h.value)} harvest value</span>
+                            <span class="a-ink" style="font-size:11px;font-weight:700;">${h.count} · ${h.percent}%</span>
+                        </div>
+                        ${inlineBar(h.count, maxH)}
+                    </div>`).join('');
+        }
+
+        function renderHistory(data, filter) {
+            let scans = data.scans || [];
+            const q = (filter || '').trim().toLowerCase();
+            if (q) scans = scans.filter(s => (s.domain || '').toLowerCase().includes(q));
+
+            if (scans.length === 0) {
+                $('historyTable').innerHTML =
+                    `<tbody><tr><td><div class="a-empty">${q ? 'No scans match that filter.' : 'No scans yet.'}</div></td></tr></tbody>`;
+                return;
+            }
+            $('historyTable').innerHTML = `
+                <thead><tr>
+                    <th class="num">Scan</th><th>Domain</th><th>Status</th><th class="num">Rating</th>
+                    <th>Tier</th><th class="num">Discovered</th><th class="num">Scanned</th>
+                    <th class="num">Unreachable</th><th>Date</th><th></th><th></th>
+                </tr></thead>
+                <tbody>${scans.map(s => `<tr>
+                    <td class="num a-muted">#${s.scan_id}</td>
+                    <td><strong>${esc(s.domain)}</strong></td>
+                    <td>${statusChip(s.status)}</td>
+                    <td class="num">${s.has_crypto_data ? `<strong>${s.enterprise_rating}</strong>` : '—'}</td>
+                    <td>${s.has_crypto_data ? tierChip(s.posture_tier) : chip('No TLS data', TOKENS.muted)}</td>
+                    <td class="num">${s.assets_discovered}</td>
+                    <td class="num">${s.assets_scanned}</td>
+                    <td class="num">${s.assets_failed}</td>
+                    <td class="a-ink2">${fmtDate(s.created_at)}</td>
+                    <td><a class="a-link" href="/dashboard/${s.scan_id}">Open</a></td>
+                    <td><button type="button" class="del-scan a-btn-ghost"
+                            data-scan-id="${s.scan_id}" data-domain="${esc(s.domain)}"
+                            title="Delete this scan permanently"
+                            style="padding:4px 9px;">Delete</button></td>
+                </tr>`).join('')}</tbody>`;
+
+            // Rebound after every render because the rows are replaced
+            // wholesale by the domain filter.
+            document.querySelectorAll('.del-scan').forEach(btn => {
+                btn.addEventListener('click', () => openDeleteModal(
+                    Number(btn.dataset.scanId), btn.dataset.domain));
+            });
+        }
+
+        /* ── Delete a scan ──────────────────────────────────────────── */
+        let pendingDelete = null;
+
+        function openDeleteModal(scanId, domain) {
+            pendingDelete = scanId;
+            $('delScanLabel').textContent = `Scan #${scanId} — ${domain}`;
+            $('delError').classList.add('hidden');
+            $('delConfirm').disabled = false;
+            $('delConfirm').textContent = 'Delete permanently';
+            $('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            pendingDelete = null;
+            $('deleteModal').classList.add('hidden');
+        }
+
+        async function confirmDelete() {
+            if (pendingDelete == null) return;
+            const btn = $('delConfirm');
+            btn.disabled = true;
+            btn.textContent = 'Deleting…';
+            try {
+                const res = await fetch(`/scan/${pendingDelete}`, {
+                    method: 'DELETE', headers: authHeaders(),
+                });
+                if (!res.ok) {
+                    // The server refuses to delete a queued/running scan
+                    // (409) — surface that reason rather than a generic error.
+                    let detail = `Delete failed (${res.status})`;
+                    try { const j = await res.json(); if (j.detail) detail = j.detail; } catch (e) { }
+                    throw new Error(detail);
+                }
+                closeDeleteModal();
+                await load();   // re-pull every section so it disappears everywhere at once
+            } catch (err) {
+                $('delError').textContent = err.message;
+                $('delError').classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Delete permanently';
+            }
+        }
+
+        function populateTrendSelector(domains) {
+            const sel = $('trendDomain');
+            // Domains with repeat scans come first and are marked, so the
+            // control makes it obvious which selections can actually trend.
+            const sorted = [...domains].sort((a, b) => b.scan_count - a.scan_count);
+            sel.innerHTML = sorted.map(d =>
+                `<option value="${esc(d.domain)}">${esc(d.domain)} (${d.scan_count} scan${d.scan_count === 1 ? '' : 's'})</option>`
+            ).join('');
+            return sorted.length ? sorted[0].domain : null;
+        }
+
+        /* ── Boot ───────────────────────────────────────────────────── */
+        async function load() {
+            TOKEN = localStorage.getItem('token');
+            if (!TOKEN) { showGate(); return; }
+
+            $('authGate').classList.add('hidden');
+            $('errorState').classList.add('hidden');
+            $('loadingState').classList.remove('hidden');
+            $('content').classList.add('hidden');
+
+            try {
+                const limit = $('riskyLimit').value || 25;
+                const [overview, domains, risky, crypto, history] = await Promise.all([
+                    getJSON('/analytics/overview'),
+                    getJSON('/analytics/domains'),
+                    getJSON(`/analytics/assets/risky?limit=${limit}`),
+                    getJSON('/analytics/crypto'),
+                    getJSON('/analytics/history'),
+                ]);
+                cache = { overview, domains, risky, crypto, history };
+
+                $('loadingState').classList.add('hidden');
+                $('content').classList.remove('hidden');
+
+                if (overview.total_scans === 0) {
+                    $('noScans').classList.remove('hidden');
+                    $('dataSections').classList.add('hidden');
+                    return;
+                }
+                $('noScans').classList.add('hidden');
+                $('dataSections').classList.remove('hidden');
+
+                renderOverview(overview);
+                renderTiers(overview);
+                renderBands(overview);
+                renderLeaderboard(domains);
+                renderRisky(risky);
+                renderCrypto(crypto);
+                renderHistory(history, '');
+
+                const first = populateTrendSelector(domains.domains || []);
+                if (first) renderTrend(await getJSON(`/analytics/domains/${encodeURIComponent(first)}/trend`));
+            } catch (err) {
+                if (String(err.message) === 'unauthorized') return;
+                console.error('[Analytics]', err);
+                $('loadingState').classList.add('hidden');
+                $('errorState').classList.remove('hidden');
+                $('errorText').textContent = err.message;
+            }
+        }
+
+        /* ── Events ─────────────────────────────────────────────────── */
+        $('refreshBtn').addEventListener('click', load);
+
+        $('trendDomain').addEventListener('change', async (e) => {
+            try {
+                renderTrend(await getJSON(`/analytics/domains/${encodeURIComponent(e.target.value)}/trend`));
+            } catch (err) { console.error('[Analytics] trend', err); }
+        });
+
+        $('riskyLimit').addEventListener('change', async (e) => {
+            try {
+                renderRisky(await getJSON(`/analytics/assets/risky?limit=${e.target.value}`));
+            } catch (err) { console.error('[Analytics] risky', err); }
+        });
+
+        $('historySearch').addEventListener('input', (e) => {
+            if (cache.history) renderHistory(cache.history, e.target.value);
+        });
+
+        $('delCancel').addEventListener('click', closeDeleteModal);
+        $('delConfirm').addEventListener('click', confirmDelete);
+        $('deleteModal').addEventListener('click', (e) => {
+            if (e.target === $('deleteModal')) closeDeleteModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !$('deleteModal').classList.contains('hidden')) closeDeleteModal();
+        });
+
+        document.querySelectorAll('[data-table-toggle]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const el = $(btn.dataset.tableToggle);
+                const hidden = el.classList.toggle('hidden');
+                btn.textContent = hidden ? 'Table view' : 'Hide table';
+            });
+        });
+
+        load();
+    </script>
+</body>
+
+</html>

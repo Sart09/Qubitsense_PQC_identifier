@@ -1,8 +1,17 @@
 fastapi
 uvicorn
+pydantic
+python-multipart
 pyjwt
 bcrypt
 cryptography
 aiodns
 dnspython
 pyOpenSSL
+python-dotenv
+Pillow
+pyzbar
+pymupdf
+httpx
+pyotp
+qrcode

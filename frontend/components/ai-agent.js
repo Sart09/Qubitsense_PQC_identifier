@@ -2,38 +2,79 @@ const AGENT_SYSTEM_PROMPT = `You are Qubit, an AI assistant embedded in the Qubi
 a security tool that scans domains for post-quantum cryptographic risk.
 
 Your Capabilities
-You can answer questions AND trigger actions on the platform. When you need to
-perform an action, append it on a new line at the END of your response in this
-exact format:
+Anything the user types or speaks to you is a QUESTION. Answer it in plain
+natural language and nothing else. You do not move the user around the
+platform — you cannot navigate, and you must never try to. Page changes are
+driven exclusively by the quick-action buttons sitting above the message box,
+which the user clicks themselves. If someone asks where a feature lives, name
+the page in words and point them at those buttons; never yank them there.
+
+This holds for every phrasing, including ones that sound like commands —
+"show me my scans", "take me to schedules", "open the report", "go to
+settings". The answer is a sentence telling them where it is, not a redirect.
+
+The only things you may ever DO are in-page effects the user explicitly asked
+for on the page they are already on. When (and only when) that happens, append
+the action on a new line at the very END of your response in this exact format:
 ACTION:FUNCTION_NAME:PARAMETER
 
 Available actions:
-ACTION:NAVIGATE:/page.html         → Navigate to a page
-ACTION:START_SCAN:domain.com       → Trigger a domain scan
-ACTION:SHOW_RESULTS:domain.com     → Open scan results for a domain
-ACTION:OPEN_SCHEDULE_MODAL:domain  → Open the schedule creation modal
-ACTION:CREATE_SCHEDULE:domain:freq → Directly create a schedule (freq: daily, weekly, monthly)
-ACTION:FILTER_FAILURES:job_id      → Filter scan table to show only failures
-ACTION:HIGHLIGHT_RISK:score        → Highlight all subdomains above risk score
+ACTION:START_SCAN:domain.com       → Start a scan (only when the user names a domain AND says to scan it)
+ACTION:CREATE_SCHEDULE:domain:freq → Create a schedule (freq: daily, weekly, monthly)
+ACTION:FILTER_FAILURES:job_id      → Filter the scan table to show only failures
+ACTION:HIGHLIGHT_RISK:score        → Highlight all subdomains above a risk score
 
-Only include ONE action per response. If no action is needed, do not include the
-ACTION line at all.
+Only include ONE action per response, and only ever as the last line.
+There is no navigation action. Never emit ACTION:NAVIGATE or
+ACTION:SHOW_RESULTS — they do not exist and will be discarded.
+
+Do NOT include an ACTION line for informational requests — summarizing,
+analyzing, explaining, comparing, or answering "what/why/how" questions about
+a scan, a report, or the platform in general is a pure-answer scenario, even if
+the report data you're citing came from a specific scan the user is currently
+viewing. Talking ABOUT a scan's results is never the same as the user asking
+you to change something. When genuinely unsure whether the user wants an
+action, answer the question and do not include an ACTION line — an unwanted
+answer is harmless, an unwanted side effect interrupts the user mid-read.
+
+A message starting with "how", "why", or "what" (e.g. "how do I delete a
+scan", "how do I rescan a domain", "why did this fail", "what happens if I
+reschedule") is always asking you to EXPLAIN the process in words, never to
+perform it. Answer in prose only — no ACTION line — even for a feature that
+has a matching action above, and even if no matching action exists at all
+(there is currently no delete action; if asked how to delete something,
+say so and describe the UI control instead of inventing one).
 
 Platform Knowledge
-Quantum Risk Score (0–100)
-Weighted factors:
-Key exchange risk: 30% (RSA, ECDH = high risk; Kyber = safe)
-Signature risk: 20% (RSA, ECDSA = vulnerable to Shor's algorithm)
-TLS version risk: 15% (TLS 1.0/1.1 = critical, TLS 1.2 = moderate, TLS 1.3 = low)
-Key size: 15% (RSA < 2048 = critical, RSA 2048 = high, RSA 4096 = moderate)
-Certificate validity: 10% (expired or expiring soon = higher risk)
-Cipher strength: 10% (RC4, DES, 3DES = critical; AES-128 = moderate; AES-256 = low)
+Quantum Risk Score (0–100, higher is worse) — scoring model v2.
+Ten weighted components, weights summing to 1.00:
+Key exchange: 22% (RSA/ECDHE/X25519 all Shor-breakable; only ML-KEM/Kyber hybrid scores 0)
+Certificate signature: 14% (RSA/ECDSA Shor-breakable; MD5/SHA-1 signatures are broken classically)
+Public key strength: 12% (RSA ≤1024 broken; RSA-2048 high; classical keys never score below 50)
+Forward secrecy: 10% (static RSA key transport = one key decrypts all captured sessions)
+TLS protocol version: 10% (TLS 1.3 = 0, TLS 1.2 = moderate, TLS 1.1/1.0 and SSL = critical)
+Symmetric cipher strength: 8% (Grover halves key bits — AES-256 = 0, AES-128 penalised, RC4/DES critical)
+Certificate trust chain: 7% (expired, self-signed, or hostname mismatch)
+Cipher mode / AEAD: 6% (GCM/ChaCha20-Poly1305 = 0; CBC padding-oracle prone; ECB critical)
+Hash strength: 6% (SHA-384/512 = 0, SHA-256 low, SHA-1/MD5 broken today)
+Certificate lifetime hygiene: 5% (imminent expiry AND over-long lifetimes both penalised — long certs slow PQC rotation)
 
-Score ranges:
-0–25: Low quantum risk
-26–50: Moderate risk — begin PQC migration planning
-51–75: High risk — prioritize migration
-76–100: Critical — immediate action required
+Then three further stages: floor gates (no PQC anywhere ⇒ at least Quantum Vulnerable;
+one of two PQC ⇒ at least Transitioning; anything classically broken ⇒ at least Critical),
+HNDL amplification (uplift = composite × (service multiplier − 1.0) × 0.15, multiplier 1.0–2.0),
+then a clamp to 0–100. If asked for exact constants, tell the user they are served live at
+the /scoring-model endpoint and shown in the dashboard's Scoring Methodology panel.
+
+Score ranges (this is the platform's one canonical risk scale — use these exact
+labels, never "Low/Moderate/High" or any other wording):
+0–29: Quantum Safe
+30–44: Transitioning — begin PQC migration planning
+45–80: Quantum Vulnerable — prioritize migration
+81–100: Critical — immediate action required
+
+Enterprise Rating = (100 − average risk score) × 10, on a 0–1000 scale, divided into
+five posture tiers: Elite-PQC 850–1000, Advanced 700–849, Standard 550–699,
+Developing 400–549, Legacy 0–399.
 
 Failure Codes
 DNS_NO_RECORD: Ghost subdomain from CT logs — safe to ignore
@@ -54,16 +95,25 @@ Key encapsulation: CRYSTALS-Kyber (ML-KEM)
 Signatures: CRYSTALS-Dilithium (ML-DSA), FALCON, SPHINCS+
 TLS hybrid: X25519Kyber768 (used in TLS 1.3 with PQC extension)
 
-Pages in the Platform
-/index.html or / → Main scan submission page
-/dashboard.html  → Scan results and history
-/schedules.html  → Scheduled scan management
-/login.html      → Authentication
+Pages in the Platform (for telling the user where things are — you never go there yourself)
+/                → Main scan submission page
+/dashboard/{id}  → Scan results for a specific scan
+/user-dashboard  → My Scans — the current user's scan history
+/schedules       → Scheduled scan management
+/login           → Authentication
 
 Current Page Context
 The user is currently on: {CURRENT_PAGE}
 The last scanned domain was: {LAST_DOMAIN}
 The user's name is: {USERNAME}
+
+Report Analysis
+When the user asks you to summarize, analyze, or explain "this scan" /
+"this report" / "these results" / "the findings", and a "Current Scan
+Report Data" section appears below, use those real numbers — cite them
+specifically (counts, scores, hostnames). If no report data is present
+(the user isn't on a scan's dashboard page, or the scan hasn't finished),
+say so plainly rather than inventing numbers.
 
 Personality
 Be concise — security professionals don't want long essays
@@ -101,6 +151,26 @@ const QUBIT_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg"
   <polygon points="28,31 29.5,35 33.5,35 30.5,37.5 31.5,41 28,39 
                    24.5,41 25.5,37.5 22.5,35 26.5,35" fill="#fbbf24"/>
 </svg>`;
+
+/* ── Quick questions — the ONLY place navigation lives ───────────────────
+ *
+ * Anything the user types is answered in words; it never moves them. Moving
+ * between pages is a deliberate act, so it is bound to these buttons above
+ * the message box and nothing else.
+ *
+ *   label  — chip text
+ *   prompt — what gets sent to Qubit (clean, without the emoji)
+ *   nav    — optional destination. Present ⇒ this chip navigates, and it does
+ *            so client-side with a fixed path, so the destination never
+ *            depends on the model getting an action line right.
+ */
+const QUBIT_CHIPS = [
+    { label: '🔍 Scan a domain', prompt: 'Take me to the scan page', nav: '/' },
+    { label: '📁 My scans', prompt: 'Show my scan history', nav: '/user-dashboard' },
+    { label: '⏰ Schedule a scan', prompt: 'Take me to scheduled scans', nav: '/schedules' },
+    { label: '📊 Explain risk score', prompt: 'Explain the quantum risk score and how it is calculated' },
+    { label: '❓ What is HNDL?', prompt: 'What is HNDL?' },
+];
 
 class TranscriptProcessor {
 
@@ -332,22 +402,87 @@ class QubitsenseAgent {
     constructor() {
         this.isOpen = false;
         this.conversationHistory = [];
-        this.apiKey = null;
         this.currentPage = window.location.pathname;
         this.lastDomain = localStorage.getItem('last_scanned_domain') || 'None';
         this.username = localStorage.getItem('email') || 'User'; // Adjust mapping to match typical storage
+        // Populated lazily by fetchReportContext() when on a /dashboard/{id}
+        // page — lets Qubit answer "summarize this scan" with real numbers
+        // instead of generic platform knowledge.
+        this.reportContext = null;
+        this._reportContextScanId = null;
+
+        // Voice output — spoken back like ChatGPT's voice mode, but only
+        // for turns the user actually spoke (typing shouldn't suddenly
+        // start talking at you). pendingVoiceReply is set right before the
+        // voice-recognition auto-send fires and consumed once by
+        // sendMessage(). voiceReplyEnabled is a persistent user toggle.
+        this.pendingVoiceReply = false;
+        this.voiceReplyEnabled = localStorage.getItem('qubit_voice_reply') !== 'off';
+        if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); // warm up async voice list
+
         this.render();
 
-        const GREETING_MESSAGE = `Hi, I'm Qubit! 👋 How can I help you today? I can scan domains, explain your quantum risk score, help schedule scans, or guide you through the platform.`;
-        this.conversationHistory = [{
-            role: 'model',
-            parts: [{ text: GREETING_MESSAGE }]
-        }];
+        const GREETING_MESSAGE = `Hi, I'm Qubit! 👋 How can I help you today? I can scan domains, explain your quantum risk score, summarize a scan report, help schedule scans, or guide you through the platform.`;
+        this.conversationHistory = [{ role: 'assistant', content: GREETING_MESSAGE }];
         this.addBubble('agent', GREETING_MESSAGE);
 
         this.attachEvents();
-        this.initKey();
         this.initVoice();
+    }
+
+    /* ── Report context — real data for "summarize this scan" ───────── */
+    async fetchReportContext() {
+        const match = this.currentPage.match(/^\/dashboard\/(\d+)/);
+        if (!match) {
+            this.reportContext = null;
+            return;
+        }
+        const scanId = match[1];
+        if (this._reportContextScanId === scanId && this.reportContext) return; // already cached
+
+        try {
+            const [statusRes, qrRes, failRes] = await Promise.all([
+                fetch(`/scan/${scanId}`),
+                fetch(`/scan/${scanId}/quantum-risk`),
+                fetch(`/scan/${scanId}/failures`),
+            ]);
+            if (!statusRes.ok) { this.reportContext = null; return; }
+            const status = await statusRes.json();
+            const qr = qrRes.ok ? await qrRes.json() : { results: [] };
+            const fail = failRes.ok ? await failRes.json() : { total_failures: 0, failures: [] };
+
+            const results = qr.results || [];
+            const total = results.length;
+            const avgRisk = total > 0
+                ? Math.round(results.reduce((s, r) => s + r.risk_score, 0) / total)
+                : 0;
+            const counts = { 'Quantum Safe': 0, 'Transitioning': 0, 'Quantum Vulnerable': 0, 'Critical': 0 };
+            results.forEach(r => { if (counts[r.risk_label] !== undefined) counts[r.risk_label]++; });
+            const topRisk = [...results]
+                .sort((a, b) => b.risk_score - a.risk_score)
+                .slice(0, 5)
+                .map(r => `${r.hostname} (${r.risk_score}/100, ${r.risk_label})`)
+                .join(', ');
+
+            const failCounts = {};
+            (fail.failures || []).forEach(f => {
+                failCounts[f.failure_category] = (failCounts[f.failure_category] || 0) + 1;
+            });
+            const failSummary = Object.entries(failCounts).map(([code, n]) => `${code}: ${n}`).join(', ') || 'none';
+
+            this.reportContext =
+                `Scan #${scanId} for domain ${status.domain} — status: ${status.status}.\n` +
+                `${total} assets successfully scanned, average quantum risk score ${avgRisk}/100.\n` +
+                `Risk breakdown: ${counts['Critical']} Critical, ${counts['Quantum Vulnerable']} Quantum Vulnerable, ` +
+                `${counts['Transitioning']} Transitioning, ${counts['Quantum Safe']} Quantum Safe.\n` +
+                `Highest-risk assets: ${topRisk || 'none'}.\n` +
+                `${fail.total_failures || 0} discovered hosts could not be reached. Failure breakdown: ${failSummary}.`;
+            this._reportContextScanId = scanId;
+            this.currentScanDomain = status.domain;
+        } catch (e) {
+            console.error('[Qubit] Failed to fetch report context:', e);
+            this.reportContext = null;
+        }
     }
 
     // ── Voice Input Engine ─────────────────────────────────────
@@ -415,6 +550,7 @@ class QubitsenseAgent {
             // Note: Use click() on send button since handleSend isn't explicitly defined as a direct method yet
             if (input.value.trim()) {
                 input.value = this.transcriptProcessor.process(input.value, true);
+                this.pendingVoiceReply = true; // this turn's reply should be spoken back
                 setTimeout(() => document.getElementById('qubit-send').click(), 400);
             }
         };
@@ -432,8 +568,50 @@ class QubitsenseAgent {
         };
     }
 
+    // ── Voice Output (speak Qubit's reply back) ─────────────────────────
+    speak(text) {
+        if (!this.voiceReplyEnabled || !('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel(); // barge-in: don't overlap utterances
+        const clean = text
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/[*_`#]/g, '')
+            .replace(/https?:\/\/\S+/g, 'link')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!clean) return;
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.rate = 1.03;
+        const voice = this._pickVoice();
+        if (voice) utter.voice = voice;
+        window.speechSynthesis.speak(utter);
+    }
+
+    _pickVoice() {
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices.length) return null;
+        return voices.find(v => /Google US English/i.test(v.name))
+            || voices.find(v => /en-US/i.test(v.lang) && /Natural|Online|Neural/i.test(v.name))
+            || voices.find(v => /en-US/i.test(v.lang))
+            || voices.find(v => v.lang.startsWith('en'))
+            || voices[0];
+    }
+
+    _updateVoiceToggleUI() {
+        const btn = document.getElementById('qubit-voice-toggle');
+        const onIcon = document.getElementById('qubit-voice-on-icon');
+        const offIcon = document.getElementById('qubit-voice-off-icon');
+        if (!btn) return;
+        const on = this.voiceReplyEnabled;
+        if (onIcon) onIcon.style.display = on ? 'block' : 'none';
+        if (offIcon) offIcon.style.display = on ? 'none' : 'block';
+        btn.setAttribute('aria-label', on ? 'Voice replies on' : 'Voice replies off');
+        btn.title = on ? 'Voice replies: on (click to mute)' : 'Voice replies: off (click to unmute)';
+        btn.classList.toggle('q-voice-muted', !on);
+    }
+
     startListening() {
         if (!this.recognition || this.isListening) return;
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel(); // barge-in over Qubit talking
 
         if (!this.isOpen) {
             document.getElementById('qubit-agent-btn').click();
@@ -528,49 +706,35 @@ class QubitsenseAgent {
         if (hint) hint.style.display = 'none';
     }
 
-    async initKey() {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            this.apiKeyError = "NO_AUTH_TOKEN";
-            return;
-        }
-        try {
-            const res = await fetch('/api/config/agent-key', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                this.apiKey = data.key;
-                window.QUBITSENSE_GEMINI_KEY = this.apiKey;
-                if (!this.apiKey) { this.apiKeyError = "EMPTY_KEY_FROM_BACKEND_DOTENV"; }
-            } else {
-                this.apiKeyError = `API_HTTP_ERROR_${res.status}`;
-            }
-        } catch (e) {
-            this.apiKeyError = "FETCH_EXCEPTION_" + e.message;
-        }
-    }
-
-    // ACTION HANDLERS — map action strings to JS functions
+    // ACTION HANDLERS — map action strings to JS functions.
+    //
+    // Deliberately contains NO navigation handler. Navigation is not a thing
+    // the model is allowed to do: it belongs to the quick-action chips, which
+    // the user clicks on purpose (see QUBIT_CHIPS). Because there is no
+    // 'NAVIGATE'/'SHOW_RESULTS' key here, a hallucinated navigation action
+    // has nowhere to land and is silently dropped — the guarantee is
+    // structural, not a matter of the prompt behaving itself.
     actionHandlers = {
-        'NAVIGATE': (param) => { window.location.href = param; },
-
         'START_SCAN': (domain) => {
+            // Only starts a scan if this page actually has the scan form.
+            // If it doesn't, say so instead of redirecting — an answer must
+            // never move the user off the page they are reading.
             const input = document.getElementById('targetInput') || document.getElementById('domain-input');
             const btn = document.getElementById('scanBtn') || document.getElementById('scan-btn');
             if (input && btn) {
                 input.value = domain;
                 btn.click();
             } else {
-                window.location.href = `/?domain=${domain}&autostart=true`;
+                window.qubitAgent.addBubble(
+                    'agent',
+                    `Scans start from the main scan page — use the “🔍 Scan a domain” button above the message box, then enter <strong>${domain}</strong>.`
+                );
             }
         },
 
-        'SHOW_RESULTS': (domain) => {
-            window.location.href = `/user_dashboard.html`; // Generic routing, dashboard fetches domain logic normally
-        },
-
         'OPEN_SCHEDULE_MODAL': (domain) => {
+            // Same rule: open the modal if it exists on this page, otherwise
+            // explain where it is rather than navigating there.
             if (typeof openCreateModal === 'function') {
                 openCreateModal();
                 setTimeout(() => {
@@ -578,7 +742,10 @@ class QubitsenseAgent {
                     if (el) el.value = domain;
                 }, 100);
             } else {
-                window.location.href = `/schedules.html`;
+                window.qubitAgent.addBubble(
+                    'agent',
+                    `You can set that up on the Scheduled Scans page — the “⏰ Schedule a scan” button above the message box takes you there.`
+                );
             }
         },
 
@@ -633,7 +800,19 @@ class QubitsenseAgent {
         }
     };
 
-    parseAndExecuteAction(responseText) {
+    // A message phrased as a question is asking for an explanation, never
+    // asking Qubit to actually do the thing right now. Detected generically
+    // — an interrogative opener or a trailing question mark — rather than as
+    // a per-feature special case, so it holds for questions about features
+    // that don't exist yet as much as for ones that do.
+    isInformationalQuestion(userText) {
+        const t = (userText || '').trim();
+        return /\?\s*$/.test(t) ||
+            /^(how|why|what|when|where|which|who|whose|is|are|was|were|do|does|did|can|could|will|would|should|am)\b/i.test(t) ||
+            /\b(how (do|can|would|should|to)|what (if|happens|does|about)|tell me|explain|describe)\b/i.test(t);
+    }
+
+    parseAndExecuteAction(responseText, userText) {
         let cleanText = responseText;
         const actionRegex = /ACTION:\s*([A-Z_]+)\s*:\s*([^\s<`]+)/i;
         const match = responseText.match(actionRegex);
@@ -641,68 +820,84 @@ class QubitsenseAgent {
         if (match) {
             const fn = match[1].toUpperCase();
             const param = match[2].trim();
-            if (this.actionHandlers[fn]) {
+            // A model can attach an action line to an answer even when the
+            // instruction was purely informational (e.g. "summarize this
+            // scan", "how do I delete a scan"). Prompting alone doesn't
+            // reliably suppress this, so guard structurally: never act on a
+            // how/why/what question, and — because actionHandlers has no
+            // navigation entry at all — never move the user off the page in
+            // response to something they typed. Navigation is chip-only.
+            const isQuestion = this.isInformationalQuestion(userText);
+            if (this.actionHandlers[fn] && !isQuestion) {
                 setTimeout(() => this.actionHandlers[fn](param), 600);
             }
-            // Strip out action lines and aggressive code block artifacts natively
-            const lines = cleanText.split('\n');
-            cleanText = lines.filter(l => !l.includes('ACTION:') && l.trim() !== '```').join('\n').trim();
         }
+        // Strip action lines and code-block artifacts unconditionally — a
+        // malformed or unknown ACTION line (e.g. a hallucinated NAVIGATE)
+        // executes nothing, but it must still never be shown to the user.
+        cleanText = cleanText
+            .split('\n')
+            .filter(l => !/ACTION\s*:/i.test(l) && l.trim() !== '```')
+            .join('\n')
+            .trim();
         return cleanText;
     }
 
     buildSystemPrompt() {
-        return AGENT_SYSTEM_PROMPT
+        let prompt = AGENT_SYSTEM_PROMPT
             .replace('{CURRENT_PAGE}', this.currentPage)
             .replace('{LAST_DOMAIN}', this.lastDomain)
             .replace('{USERNAME}', this.username);
+        if (this.reportContext) {
+            prompt += `\n\nCurrent Scan Report Data\n${this.reportContext}`;
+        }
+        return prompt;
     }
 
     async sendMessage(userText) {
-        // Prevent action if no key logic available
-        if (!this.apiKey) {
-            let contextErr = this.apiKeyError || "UNKNOWN_ERROR";
-            this.addBubble('agent', `> ERROR: System unconfigured. Trace: [${contextErr}]<br>> Please authenticate into dashboard or fix .env payload.`);
-            return;
-        }
-
         this.addBubble('user', userText);
         this.showTypingIndicator();
 
-        this.conversationHistory.push({ role: 'user', parts: [{ text: userText }] });
+        // Consumed once: only speak the reply back if THIS turn was spoken
+        // by the user (set in recognition.onend), not for typed messages.
+        const spokenTurn = this.pendingVoiceReply;
+        this.pendingVoiceReply = false;
+
+        // Refresh report context first so a question asked right after the
+        // page loads (or right after navigating to a different scan) still
+        // gets real numbers, not stale/missing ones.
+        await this.fetchReportContext();
+
+        this.conversationHistory.push({ role: 'user', content: userText });
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+            const response = await fetch('/api/agent/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    systemInstruction: {
-                        parts: [{ text: this.buildSystemPrompt() }]
-                    },
-                    contents: this.conversationHistory
-                })
+                    system: this.buildSystemPrompt(),
+                    messages: this.conversationHistory,
+                }),
             });
 
             const data = await response.json();
 
             if (!response.ok) {
-                console.error("Qubit Error:", data.error.message);
-                throw new Error(data.error?.message || "Unknown Gemini API Error");
+                throw new Error(data.detail || 'Unknown AI provider error');
             }
 
-            const rawText = data.candidates[0].content.parts[0].text;
-            const cleanText = this.parseAndExecuteAction(rawText);
+            const rawText = data.reply;
+            const cleanText = this.parseAndExecuteAction(rawText, userText);
 
-            this.conversationHistory.push({ role: 'model', parts: [{ text: rawText }] });
+            this.conversationHistory.push({ role: 'assistant', content: rawText });
             this.hideTypingIndicator();
             this.addBubble('agent', cleanText);
+            if (spokenTurn) this.speak(cleanText);
 
         } catch (err) {
             this.hideTypingIndicator();
             console.error("Qubit fetch error:", err);
-            this.addBubble('agent', '> CONNECTION ERROR:: ' + err.message);
+            this.addBubble('agent', '> ERROR: ' + err.message);
         }
     }
 
@@ -766,11 +961,11 @@ class QubitsenseAgent {
                     </div>
                 </div>
                 <div id="qubit-messages"></div>
-                <div id="qubit-suggestions">
-                    <button class="qubit-chip">🔍 Scan a domain</button>
-                    <button class="qubit-chip">📊 Explain risk score</button>
-                    <button class="qubit-chip">⏰ Schedule a scan</button>
-                    <button class="qubit-chip">❓ What is HNDL?</button>
+                <div id="qubit-suggestions" aria-label="Quick questions">
+                    <span id="qubit-suggestions-label">Quick questions</span>
+                    ${QUBIT_CHIPS.map((c, i) =>
+            `<button class="qubit-chip${c.nav ? ' qubit-chip-nav' : ''}" data-chip="${i}"${c.nav ? ` title="Go to ${c.nav}"` : ''}>${c.label}</button>`
+        ).join('\n                    ')}
                 </div>
                 <div id="qubit-input-row">
                     <input id="qubit-input" type="text" placeholder="Ask Qubit anything..." autocomplete="off"/>
@@ -781,6 +976,17 @@ class QubitsenseAgent {
                         </svg>
                         <svg id="qubit-stop-icon" width="14" height="14" viewBox="0 0 24 24" fill="white" style="display:none">
                             <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        </svg>
+                    </button>
+                    <button id="qubit-voice-toggle" aria-label="Voice replies on" title="Voice replies: on">
+                        <svg id="qubit-voice-on-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 9v6h4l5 5V4L9 9H5z"/>
+                            <path d="M16.5 12c0-1.77-.77-3.29-2-4.32v8.64c1.23-1.03 2-2.55 2-4.32z"/>
+                            <path d="M19 12c0-3.53-2.04-6.29-5-7.74v1.72c2.16 1.34 3.5 3.61 3.5 6.02s-1.34 4.68-3.5 6.02v1.72c2.96-1.45 5-4.21 5-7.74z" opacity="0.6"/>
+                        </svg>
+                        <svg id="qubit-voice-off-icon" width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="display:none">
+                            <path d="M5 9v6h4l5 5V4L9 9H5z"/>
+                            <path d="M15 8.5l6 7M21 8.5l-6 7" stroke="white" stroke-width="2" stroke-linecap="round"/>
                         </svg>
                     </button>
                     <button id="qubit-send">
@@ -810,6 +1016,7 @@ class QubitsenseAgent {
             } else {
                 panel.classList.add('qubit-hidden');
                 btn.classList.remove('panel-open');
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
             }
         });
 
@@ -817,6 +1024,7 @@ class QubitsenseAgent {
             this.isOpen = false;
             panel.classList.add('qubit-hidden');
             btn.classList.remove('panel-open');
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         });
 
         const sendBtn = document.getElementById('qubit-send');
@@ -854,13 +1062,41 @@ class QubitsenseAgent {
             observer.observe(micBtn, { attributes: true, attributeFilter: ['class'] });
         }
 
-        // Chips
+        // Voice reply toggle — persistent mute/unmute for spoken replies
+        const voiceToggleBtn = document.getElementById('qubit-voice-toggle');
+        if (voiceToggleBtn) {
+            this._updateVoiceToggleUI();
+            voiceToggleBtn.addEventListener('click', () => {
+                this.voiceReplyEnabled = !this.voiceReplyEnabled;
+                localStorage.setItem('qubit_voice_reply', this.voiceReplyEnabled ? 'on' : 'off');
+                if (!this.voiceReplyEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+                this._updateVoiceToggleUI();
+            });
+        }
+
+        // Quick questions. A chip carrying `nav` is the one and only way a
+        // page change happens: the user clicked it, so we go straight there
+        // without a model round-trip. A chip without `nav` is just a
+        // pre-written question and behaves exactly like typing it.
         document.querySelectorAll('.qubit-chip').forEach(chip => {
             chip.addEventListener('click', () => {
-                const text = chip.textContent;
+                const spec = QUBIT_CHIPS[Number(chip.dataset.chip)];
+                if (!spec) return;
                 const banner = document.getElementById('qubit-greeting-banner');
                 if (banner) banner.style.display = 'none';
-                this.sendMessage(text);
+
+                if (spec.nav) {
+                    if (this.currentPage === spec.nav) {
+                        this.addBubble('agent', `You're already on this page.`);
+                        return;
+                    }
+                    this.addBubble('user', spec.label);
+                    this.addBubble('agent', `Taking you there…`);
+                    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                    setTimeout(() => { window.location.href = spec.nav; }, 350);
+                    return;
+                }
+                this.sendMessage(spec.prompt);
             });
         });
     }

@@ -7,7 +7,7 @@ import ssl
 import datetime
 
 
-def parse_certificate(der_cert: bytes) -> dict:
+def parse_certificate(der_cert: bytes, hostname: str | None = None) -> dict:
     """
     Parse a DER-encoded certificate and extract key metadata.
 
@@ -18,12 +18,17 @@ def parse_certificate(der_cert: bytes) -> dict:
     ----------
     der_cert : bytes
         DER-encoded X.509 certificate bytes.
+    hostname : str, optional
+        The hostname the handshake was made to. When provided, enables
+        hostname/SAN mismatch detection — a genuine finding (shadow IT,
+        misconfigured cert) rather than noise.
 
     Returns
     -------
     dict
         Keys: ``key_algorithm``, ``key_size``, ``signature_algorithm``,
-        ``certificate_expiry``.
+        ``certificate_expiry``, ``san_names``, ``issuer``, ``is_self_signed``,
+        ``is_expired``, ``days_until_expiry``, ``hostname_mismatch``.
         On error, includes: ``error_category``, ``error_reason``
     """
     if not der_cert:
@@ -34,10 +39,16 @@ def parse_certificate(der_cert: bytes) -> dict:
             "key_size": 0,
             "signature_algorithm": "unknown",
             "certificate_expiry": "",
+            "san_names": [],
+            "issuer": "unknown",
+            "is_self_signed": False,
+            "is_expired": False,
+            "days_until_expiry": None,
+            "hostname_mismatch": False,
         }
-    
+
     try:
-        return _parse_with_cryptography(der_cert)
+        return _parse_with_cryptography(der_cert, hostname)
     except ImportError:
         return _parse_with_stdlib(der_cert)
     except ValueError as e:
@@ -48,6 +59,12 @@ def parse_certificate(der_cert: bytes) -> dict:
             "key_size": 0,
             "signature_algorithm": "unknown",
             "certificate_expiry": "",
+            "san_names": [],
+            "issuer": "unknown",
+            "is_self_signed": False,
+            "is_expired": False,
+            "days_until_expiry": None,
+            "hostname_mismatch": False,
         }
     except Exception as e:
         # Try stdlib fallback for any other error
@@ -61,10 +78,30 @@ def parse_certificate(der_cert: bytes) -> dict:
                 "key_size": 0,
                 "signature_algorithm": "unknown",
                 "certificate_expiry": "",
+                "san_names": [],
+                "issuer": "unknown",
+                "is_self_signed": False,
+                "is_expired": False,
+                "days_until_expiry": None,
+                "hostname_mismatch": False,
             }
 
 
-def _parse_with_cryptography(der_cert: bytes) -> dict:
+def _hostname_matches(hostname: str, san_names: list[str]) -> bool:
+    """RFC 6125-lite: exact match or single-leftmost-label wildcard match."""
+    hostname = hostname.lower().rstrip(".")
+    for san in san_names:
+        san = san.lower().rstrip(".")
+        if san == hostname:
+            return True
+        if san.startswith("*."):
+            suffix = san[1:]  # ".example.com"
+            if hostname.endswith(suffix) and hostname.count(".") == san.count("."):
+                return True
+    return False
+
+
+def _parse_with_cryptography(der_cert: bytes, hostname: str | None = None) -> dict:
     """Rich parsing using the ``cryptography`` library."""
     try:
         from cryptography import x509
@@ -78,7 +115,7 @@ def _parse_with_cryptography(der_cert: bytes) -> dict:
         cert = x509.load_der_x509_certificate(der_cert)
     except Exception as e:
         raise ValueError(f"Failed to load DER certificate: {e}")
-    
+
     try:
         pub_key = cert.public_key()
     except Exception as e:
@@ -112,36 +149,68 @@ def _parse_with_cryptography(der_cert: bytes) -> dict:
         sig_algo = "unknown"
 
     # Expiry
+    is_expired = False
+    days_until_expiry = None
     try:
-        expiry = cert.not_valid_after_utc.isoformat() if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after.isoformat()
+        not_after = cert.not_valid_after_utc if hasattr(cert, 'not_valid_after_utc') else cert.not_valid_after
+        expiry = not_after.isoformat()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if not_after.tzinfo is None:
+            not_after = not_after.replace(tzinfo=datetime.timezone.utc)
+        delta = not_after - now
+        days_until_expiry = delta.days
+        is_expired = delta.total_seconds() < 0
     except Exception:
         expiry = ""
+
+    # Subject Alternative Names — extracted once, feeds hostname-mismatch
+    # detection here and the discovery SAN-feedback loop elsewhere.
+    san_names: list[str] = []
+    try:
+        ext = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        san_names = sorted({n.lower() for n in ext.value.get_values_for_type(x509.DNSName)})
+    except x509.ExtensionNotFound:
+        san_names = []
+    except Exception:
+        san_names = []
+
+    # Issuer / self-signed — issuer == subject is the standard heuristic.
+    try:
+        issuer = cert.issuer.rfc4514_string()
+        is_self_signed = cert.issuer == cert.subject
+    except Exception:
+        issuer = "unknown"
+        is_self_signed = False
+
+    hostname_mismatch = False
+    if hostname and san_names:
+        hostname_mismatch = not _hostname_matches(hostname, san_names)
 
     return {
         "key_algorithm": key_algorithm,
         "key_size": key_size,
         "signature_algorithm": sig_algo,
         "certificate_expiry": expiry,
+        "san_names": san_names,
+        "issuer": issuer,
+        "is_self_signed": is_self_signed,
+        "is_expired": is_expired,
+        "days_until_expiry": days_until_expiry,
+        "hostname_mismatch": hostname_mismatch,
     }
 
 
 def _parse_with_stdlib(der_cert: bytes) -> dict:
     """Fallback parsing using Python's ssl module (limited info)."""
-    try:
-        # ssl.DER_cert_to_PEM_cert + decode won't give us key info,
-        # but we can get basic cert dict via a temp context
-        pem = ssl.DER_cert_to_PEM_cert(der_cert)
-
-        # Try to get expiry from the PEM string
-        import re
-        # Parse the certificate using ssl internal helpers if available
-        cert_dict = ssl._ssl._test_decode_cert(None)  # type: ignore
-    except Exception:
-        cert_dict = {}
-
     return {
         "key_algorithm": "unknown",
         "key_size": 0,
         "signature_algorithm": "unknown",
         "certificate_expiry": "",
+        "san_names": [],
+        "issuer": "unknown",
+        "is_self_signed": False,
+        "is_expired": False,
+        "days_until_expiry": None,
+        "hostname_mismatch": False,
     }

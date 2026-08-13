@@ -12,10 +12,20 @@ Improvements over previous version:
 - SRV prefix scanning for service endpoints
 """
 
+import os
 import re
 import socket
+import sys
+import time
 import concurrent.futures
 from typing import Optional
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import (
+    DEFINITIVE_NXDOMAIN as _DEFINITIVE_NXDOMAIN,
+    DNS_BRUTEFORCE_CONCURRENCY,
+)
+import dns_cache
 
 # ── Attempt to import dnspython ────────────────────────────────────────
 try:
@@ -180,32 +190,60 @@ def resolve_subdomain(
     -------
     tuple[hostname, ip_list, cname_or_none]
     """
+    # Cached definitive answers only — see scanner/dns_cache.py. This is
+    # what makes a rescan cheap AND repeatable: the second scan of a domain
+    # does not re-interrogate an already-saturated resolver.
+    cached = dns_cache.get(f"sub:{subdomain}")
+    if cached is not dns_cache.MISS:
+        ips, cname = cached
+        return subdomain, list(ips), cname, False
+
     ips: list[str] = []
     cname: Optional[str] = None
+    # True when the resolver never gave a definitive answer. Distinct from
+    # "no IPs": one means "this name does not exist", the other means "we
+    # could not find out". Reported by the caller instead of vanishing.
+    inconclusive = False
 
     if DNSPYTHON_AVAILABLE:
         resolver = dns.resolver.Resolver()
         resolver.timeout = 2
         resolver.lifetime = 2
 
-        # A record (IPv4)
-        try:
-            answers = resolver.resolve(subdomain, "A")
-            ips = [str(r) for r in answers]
-        except (dns.resolver.NXDOMAIN,
-                dns.resolver.NoAnswer,
-                dns.exception.Timeout):
-            pass
-        except Exception:
-            pass
+        # A record (IPv4). NXDOMAIN/NoAnswer are the resolver telling us the
+        # name is not there — a real answer. Timeout/SERVFAIL/NoNameservers
+        # are the resolver failing to answer at all, which used to land in
+        # the same `pass` and silently drop the candidate. At 100 concurrent
+        # workers the resolver saturates and produces exactly those, which
+        # is why brute-force yield drifted run to run on identical input.
+        for attempt in range(2):
+            try:
+                answers = resolver.resolve(subdomain, "A")
+                ips = [str(r) for r in answers]
+                break
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                break  # Definitive: this name has no A record.
+            except (dns.exception.Timeout,
+                    dns.resolver.NoNameservers,
+                    dns.resolver.LifetimeTimeout):
+                inconclusive = True
+                if attempt == 0:
+                    time.sleep(0.2)
+                    continue
+            except Exception:
+                inconclusive = True
+                break
 
         # AAAA fallback (IPv6) — catches IPv6-only cloud hosts
         if not ips:
             try:
                 answers = resolver.resolve(subdomain, "AAAA")
                 ips = [str(r) for r in answers]
-            except Exception:
+                inconclusive = False
+            except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
                 pass
+            except Exception:
+                inconclusive = True
 
         # CNAME — catches CDN-fronted subdomains
         try:
@@ -222,8 +260,13 @@ def resolve_subdomain(
                 socket.AF_INET, socket.SOCK_STREAM
             )
             ips = list({i[4][0] for i in info})
-        except socket.gaierror:
-            pass
+        except socket.gaierror as exc:
+            # Same NXDOMAIN-vs-resolver-failure split as the ghost filter;
+            # see _DEFINITIVE_NXDOMAIN in scanner/domain_discovery.py.
+            if exc.errno not in _DEFINITIVE_NXDOMAIN:
+                inconclusive = True
+        except Exception:
+            inconclusive = True
         try:
             info6 = socket.getaddrinfo(
                 subdomain, None,
@@ -231,10 +274,19 @@ def resolve_subdomain(
             )
             if not ips:
                 ips = list({i[4][0] for i in info6})
+                inconclusive = False
+        except socket.gaierror as exc:
+            if exc.errno not in _DEFINITIVE_NXDOMAIN:
+                inconclusive = True
         except Exception:
-            pass
+            inconclusive = True
 
-    return subdomain, ips, cname
+    # Store only when the resolver actually answered. An inconclusive result
+    # must stay uncached so the next attempt gets a real chance.
+    if not inconclusive:
+        dns_cache.put(f"sub:{subdomain}", (tuple(ips), cname))
+
+    return subdomain, ips, cname, inconclusive
 
 
 def extract_hosts_from_txt(txt_value: str, domain: str) -> list[str]:
@@ -252,7 +304,8 @@ def extract_hosts_from_txt(txt_value: str, domain: str) -> list[str]:
 # TECHNIQUE 1 — DNS BRUTE FORCE (Concurrent, with CNAME following)
 # ══════════════════════════════════════════════════════════════════════
 
-def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
+def dns_bruteforce(domain: str,
+                   max_workers: int = DNS_BRUTEFORCE_CONCURRENCY) -> list[str]:
     """
     Concurrent DNS brute force with CNAME chain following.
     Uses 100 workers (up from previous sequential implementation).
@@ -272,6 +325,11 @@ def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
     candidates = {f"{word}.{domain}" for word in WORDLIST}
     discovered: set[str] = set()
     cname_followups: set[str] = set()
+    # Candidates the resolver never gave a verdict on. Unlike the ghost
+    # filter these are NOT kept — a wordlist guess has no evidence behind
+    # it, so failing open would inject hundreds of nonexistent hosts. They
+    # are counted and reported instead of disappearing silently.
+    unresolved: set[str] = set()
 
     print(f"  [dns_enum] Brute forcing {len(candidates)} candidates "
           f"with {max_workers} workers...", flush=True)
@@ -285,7 +343,7 @@ def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
         }
         for future in concurrent.futures.as_completed(futures):
             try:
-                hostname, ips, cname = future.result()
+                hostname, ips, cname, inconclusive = future.result()
                 if ips:
                     discovered.add(hostname)
                     # Follow CNAME if within same domain
@@ -294,6 +352,8 @@ def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
                             and cname not in candidates
                             and cname not in discovered):
                         cname_followups.add(cname)
+                elif inconclusive:
+                    unresolved.add(hostname)
             except Exception:
                 pass
 
@@ -302,7 +362,7 @@ def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
         print(f"  [dns_enum] Following {len(cname_followups)} "
               f"CNAME targets...", flush=True)
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=50
+            max_workers=DNS_BRUTEFORCE_CONCURRENCY
         ) as executor:
             futures = {
                 executor.submit(resolve_subdomain, host, domain): host
@@ -310,14 +370,22 @@ def dns_bruteforce(domain: str, max_workers: int = 100) -> list[str]:
             }
             for future in concurrent.futures.as_completed(futures):
                 try:
-                    hostname, ips, _ = future.result()
+                    hostname, ips, _, inconclusive = future.result()
                     if ips:
                         discovered.add(hostname)
+                    elif inconclusive:
+                        unresolved.add(hostname)
                 except Exception:
                     pass
 
     print(f"  [dns_enum] Brute force discovered {len(discovered)} "
           f"live hosts", flush=True)
+    if unresolved:
+        # Visible rather than silent: this is the number that explains why
+        # brute-force yield differs between two runs over identical input.
+        print(f"  [dns_enum] ⚠ {len(unresolved)} candidate(s) inconclusive "
+              f"(resolver timeout/SERVFAIL, not NXDOMAIN) — brute-force yield "
+              f"is a lower bound for this run", flush=True)
     return sorted(discovered)
 
 

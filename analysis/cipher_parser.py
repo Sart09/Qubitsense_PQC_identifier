@@ -34,6 +34,28 @@ MODE_TOKENS = {
 SIZE_TOKENS = {"128", "192", "256", "512"}
 
 
+def _split_cipher_and_size(token: str) -> tuple[str, str] | None:
+    """
+    Split an OpenSSL-style concatenated cipher token into its algorithm and
+    key size, e.g. ``AES256`` -> ``("AES", "256")``.
+
+    TLS cipher suites arrive in two naming conventions: IANA names separate
+    the size into its own token (``..._WITH_AES_256_GCM_SHA384``) while
+    OpenSSL names concatenate it (``ECDHE-ECDSA-AES256-GCM-SHA384``). Only
+    the first form matched the exact-token sets above, so every
+    OpenSSL-named suite reported its encryption as "unknown" — the cipher
+    was measured correctly by the scanner and then lost in parsing.
+    Splitting here handles both conventions for any algorithm in
+    ENCRYPTION_TOKENS rather than special-casing particular suite names.
+    """
+    for alg in ENCRYPTION_TOKENS:
+        if token.startswith(alg) and len(token) > len(alg):
+            remainder = token[len(alg):]
+            if remainder in SIZE_TOKENS:
+                return alg, remainder
+    return None
+
+
 def parse_cipher_suite(cipher_string: str) -> dict:
     """
     Parse a TLS cipher suite string into structured components.
@@ -105,8 +127,12 @@ def parse_cipher_suite(cipher_string: str) -> dict:
     enc_parts = []
     search_pool = post_with if post_with else pre_with
     for t in search_pool:
+        split = _split_cipher_and_size(t)
         if t in ENCRYPTION_TOKENS:
             enc_parts.append(t)
+        elif split and not enc_parts:
+            # OpenSSL-style concatenated form, e.g. AES256 -> AES, 256
+            enc_parts.extend(split)
         elif t in SIZE_TOKENS and enc_parts:
             enc_parts.append(t)
         elif t in MODE_TOKENS and enc_parts:
